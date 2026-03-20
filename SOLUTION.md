@@ -336,7 +336,7 @@ Community-contributed probes must meet:
 ## Go-To-Market and Adoption Strategy
 
 ### Phase 1 — Core Library (v0.1)
-- Python package: `pip install saroku-ai`
+- Python package: `pip install saroku`
 - Three properties: sycophancy, honesty, consistency
 - LiteLLM adapter
 - CLI: `saroku run`, `saroku baseline`
@@ -386,7 +386,7 @@ Community-contributed probes must meet:
 
 ## Name and Positioning
 
-**saroku** — direct, memorable, tells you exactly what it does. We position as `saroku-ai` on PyPI.
+**saroku** — direct, memorable, tells you exactly what it does. Available on PyPI as `saroku`.
 
 Tagline: *"Test what your model values, not just what it knows."*
 

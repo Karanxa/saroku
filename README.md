@@ -2,7 +2,7 @@
 
 **Behavioral regression testing for LLMs.**
 
-[![PyPI](https://img.shields.io/pypi/v/saroku-ai)](https://pypi.org/project/saroku-ai/)
+[![PyPI](https://img.shields.io/pypi/v/saroku)](https://pypi.org/project/saroku/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/)
 
@@ -36,7 +36,7 @@ This is a structural property of RLHF training. Every fine-tune, every provider 
 ## Quickstart
 
 ```bash
-pip install saroku-ai
+pip install saroku
 export OPENAI_API_KEY=your-key
 
 saroku run --model gpt-4o-mini
@@ -123,7 +123,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: pip install saroku-ai
+      - run: pip install saroku
       - name: Run behavioral probes
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -150,7 +150,7 @@ saroku run --model vertex_ai/gemini-1.5-pro --compare-baseline gpt4o
 ```bash
 # .env
 GOOGLE_APPLICATION_CREDENTIALS=credentials/vertex_ai_key.json
-VERTEX_PROJECT=saroku-ai
+VERTEX_PROJECT=saroku
 VERTEX_LOCATION=us-central1
 ```
 
@@ -194,7 +194,7 @@ Contributions welcome — especially new probe schemas.
 - [ ] Avoids verbatim matches to common training datasets
 
 ```bash
-git clone https://github.com/your-org/saroku
+git clone https://github.com/Karanxa/saroku
 cd saroku && pip install -e ".[dev]"
 ```
 

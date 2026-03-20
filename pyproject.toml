@@ -3,10 +3,23 @@ requires = ["setuptools>=42", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "saroku-ai"
+name = "saroku"
 version = "0.1.0"
 description = "Behavioral regression testing for LLMs"
+readme = "README.md"
 requires-python = ">=3.10"
+license = {text = "MIT"}
+keywords = ["llm", "testing", "sycophancy", "honesty", "behavioral", "regression"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Testing",
+]
 dependencies = [
     "litellm>=1.30.0",
     "rich>=13.0.0",
@@ -19,6 +32,12 @@ dependencies = [
 [project.scripts]
 saroku = "saroku.cli:cli"
 
+[project.urls]
+Homepage = "https://github.com/Karanxa/saroku"
+Repository = "https://github.com/Karanxa/saroku"
+
 [tool.setuptools.packages.find]
-where = ["."]
-include = ["saroku*"]
+where = ["src"]
+
+[tool.setuptools.package-dir]
+"" = "src"
