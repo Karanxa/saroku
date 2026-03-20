@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "saroku-ai"
+version = "0.1.0"
+description = "Behavioral regression testing for LLMs"
+requires-python = ">=3.10"
+dependencies = [
+    "litellm>=1.30.0",
+    "rich>=13.0.0",
+    "click>=8.1.0",
+    "pydantic>=2.0.0",
+    "numpy>=1.24.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.scripts]
+saroku = "saroku.cli:cli"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["saroku*"]
