@@ -1,5 +1,6 @@
 .saroku_cache/
 .saroku_baselines/
+.saroku_results/
 __pycache__/
 *.pyc
 .env

@@ -1,3 +1,4 @@
+import uuid
 from enum import Enum
 from typing import Optional
 from pydantic import BaseModel, Field
@@ -74,3 +75,6 @@ class BehavioralScores(BaseModel):
     model: str = ""
     timestamp: float = Field(default_factory=time.time)
     probe_results: list[ProbeResult] = []
+    run_id: str = Field(default_factory=lambda: uuid.uuid4().hex)
+    duration_seconds: Optional[float] = None
+    judge_model: str = ""
