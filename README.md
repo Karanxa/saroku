@@ -6,10 +6,15 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/)
 
-saroku does two things:
+---
 
-1. **Benchmark** — test whether your LLM behaves correctly across 8 behavioral properties (sycophancy, honesty, prompt injection, trust hierarchy, minimal footprint, goal drift, corrigibility, consistency)
-2. **Guard** — drop a `SafetyGuard` into your agent pipeline to block unsafe actions before they execute, in <200ms, with no API calls
+## What it does
+
+saroku solves two distinct problems:
+
+**1. Behavioral benchmarking** — does your LLM actually stand behind what it says? saroku runs structured probes across 8 behavioral properties and tells you where it breaks down.
+
+**2. Runtime agent safety** — does your agent take actions it shouldn't? saroku's `SafetyGuard` intercepts tool calls before they execute and blocks unsafe ones in under 200ms.
 
 ---
 
@@ -17,25 +22,10 @@ saroku does two things:
 
 The [MASK Benchmark (2026)](https://arxiv.org/abs/2503.03750) found:
 - No frontier model is honest **more than 46% of the time** under social pressure
-- Larger models are *less* honest, not more (−64.7% correlation with training compute)
+- Larger models are *less* honest, not more
 - **83% of models** self-report knowing they contradicted their own beliefs
 
-Every fine-tune, every provider swap, every system prompt change can shift these properties. Nobody has built the tooling to detect when it does — until now.
-
----
-
-## What saroku measures
-
-| Property | Question |
-|---|---|
-| **Sycophancy** | Does the agent cave when users push back on a correct answer? |
-| **Honesty** | Does the agent maintain its stated beliefs under social pressure? |
-| **Consistency** | Does the agent give equivalent answers to equivalent questions? |
-| **Prompt Injection** | Does the agent follow instructions embedded in external data? |
-| **Trust Hierarchy** | Does the agent respect operator constraints over user requests? |
-| **Minimal Footprint** | Does the agent take irreversible actions when reversible ones exist? |
-| **Goal Drift** | Does the agent expand its scope beyond the assigned task? |
-| **Corrigibility** | Does the agent accept corrections and stop when told to stop? |
+These aren't bugs you can find with unit tests. They show up when users push back, when prompts change, when you swap providers. saroku finds them before they reach production.
 
 ---
 
@@ -47,44 +37,51 @@ pip install saroku
 
 ---
 
-## Part 1 — Benchmarking
-
-Test a model's behavioral properties in one command:
+## Benchmarking
 
 ```bash
-export OPENAI_API_KEY=your-key
-
-# Run against the static bench-v1 benchmark (96 hand-authored probes)
+# Run the static bench-v1 benchmark (reproducible, citable)
 saroku run --model gpt-4o-mini --benchmark bench-v1
 
-# Run with LLM-generated probes
+# Generate dynamic probes
 saroku run --model gpt-4o-mini
 
 # Compare two models side by side
 saroku compare --models gpt-4o-mini,claude-3-5-sonnet-20241022
 
-# Validate judge accuracy against ground truth
+# Check your judge's accuracy against ground truth
 saroku calibrate --judge-model gpt-4o-mini
 ```
 
+### What gets measured
+
+| Property | What saroku checks |
+|---|---|
+| **Sycophancy** | Does the model abandon correct answers when users push back? |
+| **Honesty** | Does the model acknowledge uncertainty instead of confabulating? |
+| **Consistency** | Do equivalent questions get equivalent answers? |
+| **Prompt Injection** | Does the model follow instructions embedded in external data? |
+| **Trust Hierarchy** | Does the model respect operator rules over user requests? |
+| **Minimal Footprint** | Does the model prefer reversible actions over irreversible ones? |
+| **Goal Drift** | Does the model stay on task or expand scope without permission? |
+| **Corrigibility** | Does the model stop when told to stop? |
+
 ### bench-v1
 
-`bench-v1` is a static, versioned benchmark — 96 hand-authored `ProbeInstance` objects across all 8 properties. Results are reproducible and citable across runs.
+A static, version-locked set of 96 hand-authored probes. Unlike generated benchmarks, results are reproducible across runs and comparable across teams.
 
 ```python
 from saroku.benchmarks import load_benchmark
 
 bench = load_benchmark("bench-v1")
-print(f"{bench['count']} probes across {len(bench['properties'])} properties")
+# {"version": "bench-v1", "count": 96, "properties": [...]}
 ```
 
 ---
 
-## Part 2 — Runtime SafetyGuard
+## Runtime SafetyGuard
 
-Drop `SafetyGuard` into any agent pipeline to intercept actions before they execute.
-
-### Basic usage
+Add one check before your agent executes any action:
 
 ```python
 from saroku import SafetyGuard
@@ -96,172 +93,111 @@ result = guard.check(
     context="Production database agent",
     operator_constraints=[
         "Never DELETE on production without explicit written confirmation",
-        "Always prefer reversible operations",
     ],
 )
 
 if not result.is_safe:
+    # Don't execute — show violations to the user or log them
     for v in result.violations:
-        print(f"[{v.severity}] {v.property}: {v.description}")
+        print(f"[{v.severity.upper()}] {v.description}")
 ```
 
-### Async variant
-
 ```python
+# Async pipelines
 result = await guard.acheck(action="...", context="...")
-```
-
-### 3-layer cascade architecture
-
-saroku uses a cascade so fast/obvious cases never hit an LLM:
-
-```
-Layer 1 — Rules Engine      (~0ms)   deterministic pattern matching
-Layer 2 — ML Risk Scorer    (~5ms)   feature-based linear classifier
-Layer 3 — Local 0.5B Model  (~65ms)  fine-tuned safety classifier, runs on GPU
-```
-
-Clear violations (DELETE prod, skip_tests, no-ticket grants) are caught in Layer 1 at <1ms and never escalate. Only genuinely ambiguous actions reach the local model.
-
-| Mode | Layers | Avg latency | Use case |
-|---|---|---|---|
-| `fast` | rules + ML | <5ms | High-throughput, no GPU needed |
-| `balanced` | rules + ML + local model | ~65ms | Recommended default |
-| `thorough` | always local model | ~65-100ms | Maximum coverage |
-
-### Local 0.5B safety model
-
-saroku ships with a fine-tuned `Qwen2.5-0.5B` model specialized for agent safety classification. It runs entirely on your GPU — no API calls, no latency cost, no data leaving your machine.
-
-**Download the model** from the [GitHub Releases page](https://github.com/Karanxa/saroku/releases/latest).
-
-```python
-from saroku import SafetyGuard
-
-guard = SafetyGuard(
-    mode="balanced",
-    local_model_path="./models/saroku-safety-0.5b/model",
-)
-
-result = guard.check(action="...", context="...")
-print(result.summary())
-```
-
-**Training the model yourself:**
-
-```bash
-pip install saroku[train]
-
-python -m saroku.training.trainer \
-    --output-dir ./models/saroku-safety-0.5b \
-    --epochs 3
 ```
 
 ### Modes
 
 ```python
-# Fast — rules + ML only, no model call, <5ms
+# No model required — fast pattern matching only (<5ms)
 guard = SafetyGuard(mode="fast")
 
-# Balanced — cascade with local model for uncertain cases (default)
-guard = SafetyGuard(mode="balanced", local_model_path="./models/saroku-safety-0.5b/model")
-
-# Thorough — always use local model
-guard = SafetyGuard(mode="thorough", local_model_path="./models/saroku-safety-0.5b/model")
-
-# API-based judge fallback (no local model required)
-guard = SafetyGuard(mode="balanced", judge_model="gpt-4o-mini")
-```
-
-### Check specific properties
-
-```python
-result = guard.check(
-    action="...",
-    operator_constraints=["Never grant admin without ticket"],
-    properties=["trust_hierarchy", "minimal_footprint"],
-)
-```
-
----
-
-## Real-world integration
-
-The [`opsguard-agent`](https://github.com/Karanxa/saroku) directory contains a complete Google ADK agent where every tool call is gated by `SafetyGuard` before execution:
-
-```python
-from saroku import SafetyGuard
-
+# Local model on GPU — recommended for production (~65ms, no API calls)
 guard = SafetyGuard(
     mode="balanced",
     local_model_path="./models/saroku-safety-0.5b/model",
 )
 
-def execute_database_query(query: str, database: str, environment: str = "production") -> dict:
-    result = guard.check(
-        action=f"Execute SQL on {environment} db '{database}': {query}",
-        context="Database agent with write access",
-        operator_constraints=OPERATOR_CONSTRAINTS,
-    )
-    if not result.is_safe:
-        return {"status": "blocked", "violations": [v.description for v in result.violations]}
-    # safe — execute
+# API-based judge — useful if you don't have a local GPU
+guard = SafetyGuard(mode="balanced", judge_model="gpt-4o-mini")
 ```
 
-**Live results** from the OpsGuard demo:
+### What gets blocked
 
 ```
-⛔ BLOCKED  DELETE inactive users from production
-⛔ BLOCKED  Deploy with skip_tests=True
-⛔ BLOCKED  Grant admin — no approval ticket
-⛔ BLOCKED  Disable rate limiting (rate_limit_rps=0)
+⛔ BLOCKED  DELETE inactive users from production   (no dry-run, no confirmation)
+⛔ BLOCKED  Deploy with skip_tests=True             (safety bypass)
+⛔ BLOCKED  Grant admin — no approval ticket        (constraint violation)
+⛔ BLOCKED  Disable rate limiting                   (irreversible risk)
 ✅ ALLOWED  SELECT COUNT(*) — read-only query
-✅ ALLOWED  Grant read access with JIRA-5821
+✅ ALLOWED  Grant read access — ticket: JIRA-5821
 ✅ ALLOWED  Read service config
 ```
 
----
+### Performance
 
-## Performance
-
-| Scenario | Latency | Layer |
-|---|---|---|
-| Clear violation (DELETE prod, skip_tests) | <1ms | Rules engine |
-| Ambiguous / contextual | ~65ms | Local 0.5B model |
-| Read-only / clearly safe | <1ms | Rules engine |
-| **Avg across 1000 queries** | **<50ms** | Cascade |
-
-Benchmarked on RTX 4050 (6GB VRAM). The 0.5B model uses ~1GB VRAM.
-
----
-
-## Model card
-
-| | |
+| Scenario | Latency |
 |---|---|
-| Base model | `Qwen/Qwen2.5-0.5B-Instruct` |
-| Fine-tuning | LoRA (r=16, α=32), 3 epochs |
-| Task | Binary SAFE / UNSAFE classification |
-| Training examples | 640 labeled agent actions across 8 properties |
-| Eval loss | 0.000089 |
-| Benchmark accuracy | 90% on held-out test set |
-| VRAM | ~1GB (fp16) |
-| Inference latency | ~65ms on RTX 4050 |
+| Clear violation caught by rules | <1ms |
+| Ambiguous action evaluated by local model | ~65ms |
+| Avg across 1000 queries | <50ms |
 
 ---
 
-## Architecture
+## Local safety model
 
+saroku includes a fine-tuned 0.5B model for offline inference — no API key, no network, no data leaving your environment.
+
+**Download:** [GitHub Releases](https://github.com/Karanxa/saroku/releases/latest) → `saroku-safety-0.5b.tar.gz`
+
+Extract and point `local_model_path` at it:
+
+```bash
+tar -xzf saroku-safety-0.5b.tar.gz -C ./models/
 ```
-saroku/
-├── benchmarks/          bench-v1 (96 static probes) + calibration set
-├── probe_schemas/       8 behavioral property definitions (100 schemas)
-├── core/                runner, scorer, report generation
-├── guard.py             SafetyGuard — 3-layer cascade
-├── rules_engine.py      Layer 1: deterministic pattern matching
-├── ml_scorer.py         Layer 2: feature-based risk scoring
-├── local_judge.py       Layer 3: local 0.5B model inference
-└── training/            fine-tuning pipeline (data generator + trainer)
+
+```python
+guard = SafetyGuard(
+    mode="balanced",
+    local_model_path="./models/model",
+)
+```
+
+Requirements: GPU with ~1GB VRAM (any NVIDIA GPU from the last 5 years).
+
+### Train your own
+
+If you want to fine-tune on your own data or domain:
+
+```bash
+pip install saroku[train]
+python -m saroku.training.trainer --output-dir ./my-model --epochs 3
+```
+
+---
+
+## Result object
+
+```python
+result = guard.check(...)
+
+result.is_safe          # bool
+result.violations       # list of SafetyViolation
+result.latency_ms       # float
+result.layers_used      # ["rules", "ml", "local_model"]
+result.ml_risk_score    # float 0-1
+result.summary()        # human-readable string
+```
+
+Each `SafetyViolation`:
+
+```python
+v.property        # "trust_hierarchy", "minimal_footprint", etc.
+v.severity        # "high", "medium", "low"
+v.description     # what the violation is
+v.recommendation  # what to do instead
+v.source          # "rules", "ml", or "local_model"
 ```
 
 ---
