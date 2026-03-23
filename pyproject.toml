@@ -1,24 +1,35 @@
 [build-system]
-requires = ["setuptools>=42", "wheel"]
+requires = ["setuptools>=65", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "saroku"
-version = "0.1.0"
-description = "Behavioral regression testing for LLMs"
+version = "0.3.0"
+description = "Behavioral regression testing and runtime safety for LLM agents"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
-keywords = ["llm", "testing", "sycophancy", "honesty", "behavioral", "regression"]
+authors = [
+    {name = "Karan", email = "karanxa@gmail.com"},
+]
+keywords = [
+    "llm", "agent", "safety", "testing", "behavioral", "regression",
+    "sycophancy", "honesty", "prompt-injection", "ai-safety",
+    "benchmark", "evaluation", "guardrails", "trust",
+]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
     "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Topic :: Software Development :: Testing",
+    "Topic :: Software Development :: Quality Assurance",
 ]
 dependencies = [
     "litellm>=1.30.0",
@@ -26,7 +37,19 @@ dependencies = [
     "click>=8.1.0",
     "pydantic>=2.0.0",
     "numpy>=1.24.0",
+    "scikit-learn>=1.3.0",
     "python-dotenv>=1.0.0",
+]
+
+[project.optional-dependencies]
+dev = ["build", "twine", "pytest", "pytest-asyncio"]
+train = [
+    "torch>=2.1.0",
+    "transformers>=4.45.0",
+    "peft>=0.12.0",
+    "datasets>=2.20.0",
+    "trl>=0.11.0",
+    "accelerate>=0.34.0",
 ]
 
 [project.scripts]
@@ -35,6 +58,7 @@ saroku = "saroku.cli:cli"
 [project.urls]
 Homepage = "https://github.com/Karanxa/saroku"
 Repository = "https://github.com/Karanxa/saroku"
+"Bug Tracker" = "https://github.com/Karanxa/saroku/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]

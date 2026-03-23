@@ -9,3 +9,7 @@ dist/
 build/
 .venv/
 credentials/
+models/
+/tmp/
+latency_test.py
+USP_ANALYSIS.md
