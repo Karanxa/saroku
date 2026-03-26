@@ -1,16 +1,25 @@
+# runtime
 .saroku_cache/
 .saroku_baselines/
 .saroku_results/
+.langgraph_api/
+
+# python
 __pycache__/
 *.pyc
-.env
 *.egg-info/
-dist/
 build/
-.venv/
+
+# packaging
+dist/
+
+# env & secrets
+.env
 credentials/
+
+# local tooling
+.venv/
+.claude/
+
+# model weights (live in saroku-training repo)
 models/
-/tmp/
-latency_test.py
-USP_ANALYSIS.md
-SOLUTION.md

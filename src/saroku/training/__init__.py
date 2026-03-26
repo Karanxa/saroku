@@ -1,1 +1,0 @@
-# saroku training pipeline

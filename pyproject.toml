@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "saroku"
-version = "0.3.0"
+version = "0.4.0"
 description = "Behavioral regression testing and runtime safety for LLM agents"
 readme = "README.md"
 requires-python = ">=3.10"
