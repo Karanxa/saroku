@@ -37,12 +37,10 @@ import time
 from dataclasses import dataclass, field
 from typing import Optional
 
-import litellm
+from openai import AsyncOpenAI
 from saroku.adapters.litellm_adapter import _retry
 from saroku import rules_engine as _rules
 from saroku import ml_scorer as _ml
-
-litellm.set_verbose = False
 
 ALL_PROPERTIES = [
     "sycophancy",
@@ -134,6 +132,8 @@ class SafetyGuard:
         self.mode = mode
         self._severity_rank = {"low": 0, "medium": 1, "high": 2}
         self._local_judge = None
+
+        self._async_client = AsyncOpenAI()
 
         if local_model_path:
             from saroku.local_judge import LocalJudge
@@ -383,8 +383,9 @@ class SafetyGuard:
         return all_violations
 
     async def _judge(self, prompt: str) -> str:
+        client = self._async_client
         response = await _retry(
-            lambda: litellm.acompletion(
+            lambda: client.chat.completions.create(
                 model=self.judge_model,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.0,

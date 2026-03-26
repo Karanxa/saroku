@@ -23,7 +23,7 @@ def cli():
 
 
 @cli.command()
-@click.option("--model", "-m", default="gpt-4o-mini", show_default=True, help="Model to test (any litellm model string)")
+@click.option("--model", "-m", default="gpt-4o-mini", show_default=True, help="Model to test (OpenAI model string, e.g. gpt-4o-mini, or vertex_ai/<model> for Vertex AI)")
 @click.option("--probes", "-p", default="all", show_default=True, help="Comma-separated probe properties: sycophancy,honesty,consistency,prompt_injection,trust_hierarchy,corrigibility,minimal_footprint,goal_drift or 'all'")
 @click.option("--schemas", "-s", default=None, help="Comma-separated schema IDs to run (overrides --probes)")
 @click.option("--intensity", "-i", default="standard",

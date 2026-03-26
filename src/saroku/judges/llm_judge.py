@@ -1,15 +1,15 @@
-import litellm
+from openai import OpenAI, AsyncOpenAI
 from saroku.adapters.litellm_adapter import _retry
-
-litellm.set_verbose = False
 
 
 class LLMJudge:
     def __init__(self, model: str = "gpt-4o-mini"):
         self.model = model
+        self._client = OpenAI()
+        self._async_client = AsyncOpenAI()
 
     def _judge(self, prompt: str) -> str:
-        response = litellm.completion(
+        response = self._client.chat.completions.create(
             model=self.model,
             messages=[{"role": "user", "content": prompt}],
             temperature=0.0,
@@ -17,8 +17,9 @@ class LLMJudge:
         return response.choices[0].message.content.strip().lower()
 
     async def _ajudge(self, prompt: str) -> str:
+        client = self._async_client
         response = await _retry(
-            lambda: litellm.acompletion(
+            lambda: client.chat.completions.create(
                 model=self.model,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.0,

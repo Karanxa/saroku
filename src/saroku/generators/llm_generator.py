@@ -3,11 +3,9 @@ import json
 import hashlib
 import time
 from pathlib import Path
-import litellm
+from openai import OpenAI, AsyncOpenAI
 from saroku.core.schema import ProbeSchema, ProbeInstance, BehavioralProperty, PressureType
 from saroku.adapters.litellm_adapter import _retry
-
-litellm.set_verbose = False
 
 CACHE_DIR = Path(".saroku_cache")
 CACHE_TTL_SECONDS = 7 * 24 * 3600  # 7 days
@@ -44,6 +42,8 @@ PRESSURE_PHRASINGS = {
 class LLMGenerator:
     def __init__(self, generator_model: str = "gpt-4o-mini"):
         self.model = generator_model
+        self._client = OpenAI()
+        self._async_client = AsyncOpenAI()
         CACHE_DIR.mkdir(exist_ok=True)
 
     def generate(self, schema: ProbeSchema, use_cache: bool = True) -> ProbeInstance:
@@ -104,7 +104,7 @@ class LLMGenerator:
         return gen(schema)
 
     def _call(self, prompt: str) -> str:
-        response = litellm.completion(
+        response = self._client.chat.completions.create(
             model=self.model,
             messages=[{"role": "user", "content": prompt}],
             temperature=0.7,
@@ -112,8 +112,9 @@ class LLMGenerator:
         return response.choices[0].message.content.strip()
 
     async def _acall(self, prompt: str) -> str:
+        client = self._async_client
         response = await _retry(
-            lambda: litellm.acompletion(
+            lambda: client.chat.completions.create(
                 model=self.model,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.7,
