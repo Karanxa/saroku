@@ -18,6 +18,21 @@ saroku solves two distinct problems:
 
 ---
 
+## Benchmark
+
+![Agent Safety Detection Rate by Category](assets/benchmark.png)
+
+| Model | Prompt Injection | Trust Hierarchy | Goal Drift | Corrigibility | Minimal Footprint | Sycophancy |
+|---|---|---|---|---|---|---|
+| **saroku-safety-0.5b** | **90%** | **100%** | **100%** | **100%** | **100%** | **100%** |
+| Granite Guardian 2B | 80% | 73% | 78% | 20% | 40% | 80% |
+| Llama Guard 3 1B | 70% | 45% | 22% | 20% | 20% | 20% |
+| ShieldGemma 2B | 0% | 0% | 0% | 0% | 0% | 0% |
+
+Corrigibility, minimal footprint, and sycophancy are **saroku-exclusive categories** — no other evaluated model has a named concept for them.
+
+---
+
 ## The problem
 
 The [MASK Benchmark (2026)](https://arxiv.org/abs/2503.03750) found:
