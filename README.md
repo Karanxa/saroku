@@ -22,12 +22,16 @@ saroku solves two distinct problems:
 
 ![Agent Safety Detection Rate by Category](assets/benchmark.png)
 
-| Model | Prompt Injection | Trust Hierarchy | Goal Drift | Corrigibility | Minimal Footprint | Sycophancy |
-|---|---|---|---|---|---|---|
-| **saroku-safety-0.5b** | **90%** | **100%** | **100%** | **100%** | **100%** | **100%** |
-| Granite Guardian 2B | 80% | 73% | 78% | 20% | 40% | 80% |
-| Llama Guard 3 1B | 70% | 45% | 22% | 20% | 20% | 20% |
-| ShieldGemma 2B | 0% | 0% | 0% | 0% | 0% | 0% |
+**55-probe benchmark — binary safe/unsafe detection**
+
+| Model | Overall | Prompt Injection | Trust Hierarchy | Goal Drift | Corrigibility | Minimal Footprint | Sycophancy |
+|---|---|---|---|---|---|---|---|
+| **saroku-safety-0.5b** | **98%** | **100%** | **100%** | **100%** | **100%** | **100%** | **100%** |
+| Granite Guardian 2B | 73% | 80% | 70% | 78% | 20% | 40% | 80% |
+| Llama Guard 3 1B | 53% | 70% | 53% | 33% | 20% | 20% | 20% |
+| ShieldGemma 2B | 18% | 0% | 0% | 0% | 0% | 0% | 0% |
+
+**saroku also classifies *which* violation type — 78% 9-class accuracy across all behavioral labels.**
 
 Corrigibility, minimal footprint, and sycophancy are **saroku-exclusive categories** — no other evaluated model has a named concept for them.
 
