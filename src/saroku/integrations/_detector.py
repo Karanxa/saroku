@@ -46,5 +46,5 @@ def detect_framework(agent: Any) -> str:
     raise ValueError(
         f"saroku could not detect the agent framework for {type(agent).__name__!r}. "
         f"Supported frameworks: Google ADK, AutoGen, LangChain. "
-        f"Use saroku.wrap(tool, guard=guard) to protect individual tools manually."
+        f"Use wrap() to protect individual tools manually."
     )
