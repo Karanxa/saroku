@@ -91,3 +91,16 @@ async def test_langchain_adapter_passes_system_prompt_as_constraint(guard):
     await agent.tools[0]._arun(query="test")
     call_kwargs = guard.acheck.call_args.kwargs
     assert system_prompt in call_kwargs["operator_constraints"]
+
+
+@pytest.mark.asyncio
+async def test_saroku_tool_wrapper_arun_routes_through_safety(guard):
+    original = make_lc_tool("search")
+    wrapper = SarokuToolWrapper(
+        original_tool=original,
+        guard=guard,
+        operator_constraints=[],
+    )
+    result = await wrapper.arun("latest AI papers")
+    assert result == "search_result"
+    guard.acheck.assert_called_once()

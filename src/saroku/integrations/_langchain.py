@@ -17,6 +17,10 @@ class SarokuToolWrapper:
 
     Preserves ``name`` and ``description`` so the agent's prompt
     and tool-selection logic are unaffected.
+
+    Exposes the full public interface expected by LangChain executors
+    (``run``, ``arun``, ``invoke``, ``ainvoke``) without subclassing
+    ``BaseTool`` — avoids a hard langchain dependency.
     """
 
     def __init__(
@@ -39,9 +43,12 @@ class SarokuToolWrapper:
             operator_constraints=self._operator_constraints,
             original_goal="",
         )
-        if not result.is_safe and result.violations:
-            v = result.violations[0]
-            reason = f"Action blocked by saroku: {v.property} — {v.description}"
+        if not result.is_safe:
+            v = result.violations[0] if result.violations else None
+            reason = (
+                f"Action blocked by saroku: {v.property} — {v.description}"
+                if v else "Action blocked by saroku."
+            )
             raise SafetyBlockedError(
                 violation=v,
                 blocked_action=action,
@@ -52,6 +59,26 @@ class SarokuToolWrapper:
     def _run(self, *args: Any, **kwargs: Any) -> Any:
         """Sync path — delegates to original. Use _arun for safety checks."""
         return self._original._run(*args, **kwargs)
+
+    # ── Public interface expected by LangChain executors ─────────────────────
+
+    async def arun(self, tool_input: Any = None, **kwargs: Any) -> Any:
+        if tool_input is not None and not kwargs:
+            return await self._arun(tool_input)
+        return await self._arun(**kwargs)
+
+    def run(self, tool_input: Any = None, **kwargs: Any) -> Any:
+        return self._run(tool_input, **kwargs)
+
+    async def ainvoke(self, input: Any, config: Any = None, **kwargs: Any) -> Any:
+        if isinstance(input, str):
+            return await self._arun(input)
+        return await self._arun(**input)
+
+    def invoke(self, input: Any, config: Any = None, **kwargs: Any) -> Any:
+        if isinstance(input, str):
+            return self._run(input)
+        return self._run(**input)
 
 
 class LangChainAdapter(FrameworkAdapter):

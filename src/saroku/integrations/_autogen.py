@@ -5,6 +5,7 @@ Wraps tool functions registered in AutoGen agent's ``_tools`` dict.
 """
 from __future__ import annotations
 
+import inspect
 from functools import wraps
 from typing import Any
 
@@ -58,14 +59,20 @@ class AutoGenAdapter(FrameworkAdapter):
                 operator_constraints=operator_constraints,
                 original_goal="",
             )
-            if not result.is_safe and result.violations:
-                v = result.violations[0]
-                reason = f"Action blocked by saroku: {v.property} — {v.description}"
+            if not result.is_safe:
+                v = result.violations[0] if result.violations else None
+                reason = (
+                    f"Action blocked by saroku: {v.property} — {v.description}"
+                    if v else "Action blocked by saroku."
+                )
                 raise SafetyBlockedError(
                     violation=v,
                     blocked_action=action,
                     reason=reason,
                 )
-            return await fn(**kwargs)
+            if inspect.iscoroutinefunction(fn):
+                return await fn(**kwargs)
+            else:
+                return fn(**kwargs)
 
         return _wrapped

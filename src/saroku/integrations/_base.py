@@ -4,7 +4,7 @@ saroku.integrations._base — Core types for the framework interceptor layer.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, Optional
 
 from saroku.guard import SafetyViolation
 
@@ -17,7 +17,7 @@ class SafetyBlockedError(Exception):
     ``reason`` as the tool's return value in its message history.
     """
 
-    def __init__(self, violation: SafetyViolation, blocked_action: str, reason: str):
+    def __init__(self, violation: Optional[SafetyViolation], blocked_action: str, reason: str):
         super().__init__(reason)
         self.violation = violation
         self.blocked_action = blocked_action

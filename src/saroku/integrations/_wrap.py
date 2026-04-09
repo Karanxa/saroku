@@ -56,9 +56,12 @@ def wrap(
             original_goal=original_goal,
         )
 
-        if not result.is_safe and result.violations:
-            v = result.violations[0]
-            reason = f"Action blocked by saroku: {v.property} — {v.description}"
+        if not result.is_safe:
+            v = result.violations[0] if result.violations else None
+            reason = (
+                f"Action blocked by saroku: {v.property} — {v.description}"
+                if v else "Action blocked by saroku."
+            )
             raise SafetyBlockedError(
                 violation=v,
                 blocked_action=action,

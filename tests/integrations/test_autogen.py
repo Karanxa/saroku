@@ -80,3 +80,16 @@ async def test_autogen_adapter_passes_system_message_as_constraint(guard):
     await agent._tools["send_email"](to="bob@internal.com", body="Hi")
     call_kwargs = guard.acheck.call_args.kwargs
     assert system_msg in call_kwargs["operator_constraints"]
+
+
+@pytest.mark.asyncio
+async def test_autogen_adapter_handles_sync_tool(guard):
+    agent = make_autogen_agent()
+    # Replace the async tool with a sync one
+    def sync_send_email(to: str, body: str) -> str:
+        return f"Sync email sent to {to}"
+    agent._tools["send_email"] = sync_send_email
+    adapter = AutoGenAdapter()
+    await adapter.apply_to_agent(agent, guard)
+    result = await agent._tools["send_email"](to="alice@example.com", body="Hello")
+    assert result == "Sync email sent to alice@example.com"
