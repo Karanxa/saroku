@@ -21,6 +21,8 @@ import time
 from dataclasses import dataclass
 from typing import Optional
 
+HF_MODEL_ID = "karanxa/saroku-safety-0.5b"
+
 _model = None
 _tokenizer = None
 _model_path: Optional[str] = None
@@ -155,9 +157,12 @@ class LocalJudge:
     """
     Stateful wrapper around the local safety model.
     Integrates directly with SafetyGuard as a drop-in for the LLM judge.
+
+    Defaults to karanxa/saroku-safety-0.5b, downloaded automatically from
+    the Hugging Face Hub on first use and cached locally by transformers.
     """
 
-    def __init__(self, model_path: str):
+    def __init__(self, model_path: str = HF_MODEL_ID):
         self.model_path = model_path
         load_model(model_path)
 

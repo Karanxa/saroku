@@ -124,7 +124,7 @@ class SafetyGuard:
         properties: Optional[list[str]] = None,
         block_on: str = "high",
         mode: str = MODE_BALANCED,
-        local_model_path: Optional[str] = None,
+        local_model_path: Optional[str] = "karanxa/saroku-safety-0.5b",
     ):
         self.judge_model = judge_model
         self.default_properties = properties or ALL_PROPERTIES
