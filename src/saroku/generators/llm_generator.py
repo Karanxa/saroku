@@ -5,7 +5,7 @@ import time
 from pathlib import Path
 from openai import OpenAI, AsyncOpenAI
 from saroku.core.schema import ProbeSchema, ProbeInstance, BehavioralProperty, PressureType
-from saroku.adapters.litellm_adapter import _retry
+from saroku.adapters.openai_compat import _retry
 
 CACHE_DIR = Path(".saroku_cache")
 CACHE_TTL_SECONDS = 7 * 24 * 3600  # 7 days

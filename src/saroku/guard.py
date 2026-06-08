@@ -1,21 +1,39 @@
 """
 saroku.guard — Runtime safety guard for agent actions.
 
-3-layer cascade architecture for <200ms latency on the fast path:
+Pure LLM architecture. Two paths, no regex or rule-based heuristics:
 
-    Layer 1 — Rules Engine   (~0ms)   deterministic pattern matching
-    Layer 2 — ML Scorer      (~5ms)   feature-based linear risk model
-    Layer 3 — LLM Judge      (~10s)   contextual LLM, only for uncertain cases
+    Fast path  — saroku-safety-0.5b local model (~50-150ms, no API calls)
+    Thorough path — any LLM via ModelAdapter (GPT-4o, Claude, Gemini, Groq, etc.)
 
-Clear-cut violations are caught in Layer 1 or 2 and never reach the LLM.
-Only genuinely ambiguous actions (~15% of traffic) escalate to Layer 3.
+Modes:
+    "local"    — local 0.5b model only (requires local_model_path)
+    "balanced" — local model if available → escalate to LLM for uncertain / unsafe
+    "thorough" — always run the full LLM judge for rich property-level analysis
 
 Usage:
     from saroku import SafetyGuard
 
-    guard = SafetyGuard(judge_model="gpt-4o-mini")          # balanced (default)
-    guard = SafetyGuard(mode="fast")                         # rules + ML only, no LLM
-    guard = SafetyGuard(mode="thorough")                     # always use LLM
+    # Default: GPT-4o-mini as the LLM judge
+    guard = SafetyGuard(judge_model="gpt-4o-mini")
+
+    # Use Anthropic, Gemini, Groq, Ollama, or any provider
+    guard = SafetyGuard(judge_model="anthropic:claude-3-5-haiku-20241022")
+    guard = SafetyGuard(judge_model="google:gemini-2.0-flash")
+    guard = SafetyGuard(judge_model="groq:llama-3.3-70b-versatile")
+    guard = SafetyGuard(judge_model="ollama:llama3.2")
+
+    # Bring your own model
+    from saroku import ModelAdapter
+
+    class MyAdapter(ModelAdapter):
+        async def achat(self, prompt: str) -> str:
+            return my_model.complete(prompt)
+
+    guard = SafetyGuard(model_adapter=MyAdapter())
+
+    # Local 0.5b model (fast, no API calls)
+    guard = SafetyGuard(local_model_path="./models/saroku-safety-0.5b")
 
     result = guard.check(
         action="DELETE FROM users WHERE last_login < '2023-01-01'",
@@ -37,10 +55,8 @@ import time
 from dataclasses import dataclass, field
 from typing import Optional
 
-from openai import AsyncOpenAI
-from saroku.adapters.litellm_adapter import _retry
-from saroku import rules_engine as _rules
-from saroku import ml_scorer as _ml
+from saroku.adapters.base import ModelAdapter
+from saroku.adapters.factory import resolve_adapter
 
 ALL_PROPERTIES = [
     "sycophancy",
@@ -52,9 +68,9 @@ ALL_PROPERTIES = [
     "corrigibility",
 ]
 
-MODE_FAST      = "fast"        # Layer 1 + 2 only — no LLM calls
-MODE_BALANCED  = "balanced"    # Layer 1 → 2 → 3 cascade (default)
-MODE_THOROUGH  = "thorough"    # Always use LLM (Layer 3), layers 1+2 are advisory
+MODE_LOCAL    = "local"      # saroku-safety-0.5b only — fastest, no API calls
+MODE_BALANCED = "balanced"   # local model → escalate to LLM if unsafe/uncertain
+MODE_THOROUGH = "thorough"   # always run full LLM judge (default when no local model)
 
 
 @dataclass
@@ -64,7 +80,7 @@ class SafetyViolation:
     severity: str           # "high" | "medium" | "low"
     description: str
     recommendation: str
-    source: str = "llm"     # "rules" | "ml" | "llm"
+    source: str = "llm"     # "local_model" | "llm"
 
 
 @dataclass
@@ -74,8 +90,7 @@ class SafetyCheckResult:
     violations: list[SafetyViolation] = field(default_factory=list)
     checked_properties: list[str] = field(default_factory=list)
     latency_ms: float = 0.0
-    layers_used: list[str] = field(default_factory=list)  # which layers ran
-    ml_risk_score: Optional[float] = None
+    layers_used: list[str] = field(default_factory=list)
     action: str = ""
     context: str = ""
 
@@ -100,22 +115,40 @@ class SafetyCheckResult:
 
 class SafetyGuard:
     """
-    Runtime safety evaluator for agent actions.
+    Runtime LLM safety evaluator for agent actions.
 
     Instantiate once and call .check() or .acheck() anywhere in your pipeline.
 
     Args:
-        judge_model:  LiteLLM model string for Layer-3 LLM judge.
-                      Only used when mode is "balanced" or "thorough" and
-                      local_model_path is not set.
-        local_model_path: Path to fine-tuned saroku safety model directory.
-                      When set, uses the local 0.5B model as Layer-3 judge
-                      instead of an API model (~50-150ms vs ~10s).
-        properties:   Properties to check. None = all properties.
-        block_on:     Minimum severity to treat as unsafe ("high"/"medium"/"low").
-        mode:         "fast"     — rules + ML only, no LLM (<10ms)
-                      "balanced" — cascade, local/LLM only for uncertain cases (default)
-                      "thorough" — always use judge (local model or LLM)
+        judge_model:      Model for the LLM judge. Accepts any provider via
+                          "provider:model" prefix. Default: "gpt-4o-mini".
+
+                          Supported prefixes:
+                            openai:<model>       OpenAI API         (OPENAI_API_KEY)
+                            anthropic:<model>    Anthropic Claude   (ANTHROPIC_API_KEY)
+                            google:<model>       Google Gemini      (GOOGLE_API_KEY)
+                            groq:<model>         Groq               (GROQ_API_KEY)
+                            mistral:<model>      Mistral AI         (MISTRAL_API_KEY)
+                            together:<model>     Together AI        (TOGETHER_API_KEY)
+                            perplexity:<model>   Perplexity         (PERPLEXITY_API_KEY)
+                            azure:<deployment>   Azure OpenAI       (AZURE_OPENAI_ENDPOINT)
+                            ollama:<model>       Local Ollama       (no key)
+                            <model>              OpenAI (default)
+
+        model_adapter:    Plug in any custom model as a ModelAdapter instance.
+                          Takes precedence over judge_model.
+
+        local_model_path: Path to saroku-safety-0.5b model directory.
+                          Enables the fast local path (~50-150ms, no API costs).
+
+        properties:       Properties to evaluate. None = all 7 properties.
+
+        block_on:         Minimum severity that marks an action unsafe.
+                          "high" (default) | "medium" | "low"
+
+        mode:             "local"    — local 0.5b model only (requires local_model_path)
+                          "balanced" — local model first, LLM for unsafe/uncertain
+                          "thorough" — always run the full LLM judge
     """
 
     def __init__(
@@ -125,6 +158,7 @@ class SafetyGuard:
         block_on: str = "high",
         mode: str = MODE_BALANCED,
         local_model_path: Optional[str] = "karanxa/saroku-safety-0.5b",
+        model_adapter: Optional[ModelAdapter] = None,
     ):
         self.judge_model = judge_model
         self.default_properties = properties or ALL_PROPERTIES
@@ -133,11 +167,19 @@ class SafetyGuard:
         self._severity_rank = {"low": 0, "medium": 1, "high": 2}
         self._local_judge = None
 
-        self._async_client = AsyncOpenAI()
-
         if local_model_path:
             from saroku.local_judge import LocalJudge
             self._local_judge = LocalJudge(local_model_path)
+            # If no explicit mode set, default to balanced when local model is available
+            if mode == MODE_THOROUGH and model_adapter is None:
+                self.mode = MODE_BALANCED
+
+        if model_adapter is not None:
+            self._adapter: Optional[ModelAdapter] = model_adapter
+        elif mode != MODE_LOCAL:
+            self._adapter = resolve_adapter(judge_model)
+        else:
+            self._adapter = None
 
     # ── Public API ─────────────────────────────────────────────────────────────
 
@@ -166,160 +208,48 @@ class SafetyGuard:
         original_goal: Optional[str] = None,
         properties: Optional[list[str]] = None,
     ) -> SafetyCheckResult:
-        """Async safety check — runs the cascade and returns when a verdict is reached."""
+        """Async safety check — returns when a verdict is reached."""
         t_start = time.perf_counter()
         props = properties or self.default_properties
         ctx = context or ""
         constraints = operator_constraints or []
-
-        violations: list[SafetyViolation] = []
         layers_used: list[str] = []
-        ml_risk: Optional[float] = None
 
-        # ── Layer 1: Rules Engine ──────────────────────────────────────────────
-        rules_result = _rules.evaluate(action, ctx, constraints)
-        layers_used.append("rules")
-
-        if rules_result.verdict == _rules.VERDICT_BLOCK and self.mode != MODE_THOROUGH:
-            # High-confidence rule hit — return immediately, no LLM needed
-            for m in rules_result.matches:
-                violations.append(SafetyViolation(
-                    property=m.property,
-                    severity=m.severity,
-                    description=m.description,
-                    recommendation=m.recommendation,
-                    source="rules",
-                ))
-            return self._build_result(
-                violations, props, t_start, layers_used, ml_risk, action, ctx
-            )
-
-        if rules_result.verdict == _rules.VERDICT_ALLOW and self.mode == MODE_FAST:
-            return self._build_result([], props, t_start, layers_used, ml_risk, action, ctx)
-
-        # Carry any medium/low-confidence rule matches forward
-        rule_violations = [
-            SafetyViolation(
-                property=m.property,
-                severity=m.severity,
-                description=m.description,
-                recommendation=m.recommendation,
-                source="rules",
-            )
-            for m in rules_result.matches
-        ]
-
-        # ── Layer 2: ML Scorer ─────────────────────────────────────────────────
-        ml_result = _ml.score(action, ctx, constraints)
-        ml_risk = ml_result.risk_score
-        layers_used.append("ml")
-
-        if self.mode == MODE_FAST:
-            # Fast mode: ML verdict is final
-            if ml_result.verdict == "block":
-                violations.extend(rule_violations)
-                violations.append(SafetyViolation(
-                    property="minimal_footprint",
-                    severity="high",
-                    description=f"ML risk scorer flagged this action (risk={ml_risk:.2f}). "
-                                f"Top signals: {', '.join(f[0] for f in ml_result.top_features[:3])}",
-                    recommendation="Review the action for unsafe patterns before executing.",
-                    source="ml",
-                ))
-            elif ml_result.verdict == "allow":
-                pass  # safe
-            else:
-                # Uncertain in fast mode → conservative, treat as block
-                violations.extend(rule_violations)
-                if rule_violations:
-                    pass  # already has violations from rules
-                else:
-                    violations.append(SafetyViolation(
-                        property="honesty",
-                        severity="medium",
-                        description=f"Action is ambiguous — risk score {ml_risk:.2f} is in uncertain range.",
-                        recommendation="Use mode='balanced' for LLM-based contextual evaluation.",
-                        source="ml",
-                    ))
-            return self._build_result(
-                violations, props, t_start, layers_used, ml_risk, action, ctx
-            )
-
-        # ── Cascade decision: escalate to LLM? ────────────────────────────────
-        # If both rules and ML agree it's safe → return early (no LLM)
-        rules_clear = rules_result.verdict == _rules.VERDICT_ALLOW
-        ml_clear    = ml_result.verdict == "allow"
-        ml_block    = ml_result.verdict == "block"
-
-        if rules_clear and ml_clear and self.mode != MODE_THOROUGH:
-            return self._build_result([], props, t_start, layers_used, ml_risk, action, ctx)
-
-        if ml_block and self.mode != MODE_THOROUGH:
-            # ML confident block — skip LLM, return ML + rule violations
-            violations.extend(rule_violations)
-            violations.append(SafetyViolation(
-                property="minimal_footprint",
-                severity="high",
-                description=f"Risk scorer flagged this action (score={ml_risk:.2f}). "
-                            f"Signals: {', '.join(f[0] for f in ml_result.top_features[:3])}",
-                recommendation="Review the action for unsafe patterns before executing.",
-                source="ml",
-            ))
-            return self._build_result(
-                violations, props, t_start, layers_used, ml_risk, action, ctx
-            )
-
-        # ── Layer 3: Local model or LLM Judge (uncertain or thorough mode) ───────
+        # ── Fast path: local saroku-safety-0.5b model ─────────────────────────
         if self._local_judge is not None:
             layers_used.append("local_model")
-            llm_violations = self._run_local_judge(action, ctx, constraints)
-        else:
-            layers_used.append("llm")
-            llm_violations = await self._run_llm_checks(
-                action, ctx, constraints, original_goal or "", props
-            )
+            local_result = self._local_judge.evaluate(action, ctx)
 
-        # Merge: rule violations + LLM violations (deduplicate by property)
-        seen_props = {v.property for v in rule_violations}
-        all_violations = list(rule_violations)
-        for v in llm_violations:
-            if v.property not in seen_props:
-                all_violations.append(v)
-                seen_props.add(v.property)
-            else:
-                # LLM found same property — use LLM's richer description
-                all_violations = [
-                    v if existing.property == v.property else existing
-                    for existing in all_violations
-                ]
+            if self.mode == MODE_LOCAL:
+                # Local model is the final verdict
+                return self._local_verdict(local_result, props, t_start, layers_used, action, ctx)
 
-        return self._build_result(
-            all_violations, props, t_start, layers_used, ml_risk, action, ctx
-        )
+            if self.mode == MODE_BALANCED and local_result.verdict == "SAFE":
+                # Local says safe — trust it, skip the LLM call
+                return self._build_result([], props, t_start, layers_used, action, ctx)
 
-    # ── Local model judge (Layer 3, fast path) ────────────────────────────────
+            # Local says UNSAFE or mode is THOROUGH — escalate to LLM for details
+            if self._adapter is None:
+                return self._local_verdict(local_result, props, t_start, layers_used, action, ctx)
 
-    def _run_local_judge(
-        self,
-        action: str,
-        context: str,
-        constraints: list[str],
-    ) -> list[SafetyViolation]:
-        """
-        Run the fine-tuned local 0.5B model as the Layer-3 judge.
-        Returns SAFE or UNSAFE — the rules engine already has property/severity
-        for violations caught in Layer 1; the ML scorer flags unknown risks.
-        """
-        result = self._local_judge.evaluate(action, context, constraints)
-        if result.verdict == "SAFE":
-            return []
-        return [SafetyViolation(
-            property="unclassified",
+        # ── Thorough path: full LLM judge ─────────────────────────────────────
+        layers_used.append("llm")
+        violations = await self._run_llm_checks(action, ctx, constraints, original_goal or "", props)
+        return self._build_result(violations, props, t_start, layers_used, action, ctx)
+
+    # ── Local model verdict builder ────────────────────────────────────────────
+
+    def _local_verdict(self, local_result, props, t_start, layers_used, action, ctx) -> SafetyCheckResult:
+        if local_result.verdict == "SAFE":
+            return self._build_result([], props, t_start, layers_used, action, ctx)
+        violation = SafetyViolation(
+            property=local_result.property or "unclassified",
             severity="high",
-            description="Local safety model flagged this action as unsafe.",
-            recommendation="Review the action against operator constraints before executing.",
+            description="saroku-safety-0.5b flagged this action as unsafe.",
+            recommendation="Review the action before executing. Use mode='thorough' for detailed analysis.",
             source="local_model",
-        )]
+        )
+        return self._build_result([violation], props, t_start, layers_used, action, ctx)
 
     # ── Result builder ─────────────────────────────────────────────────────────
 
@@ -329,7 +259,6 @@ class SafetyGuard:
         props: list[str],
         t_start: float,
         layers_used: list[str],
-        ml_risk: Optional[float],
         action: str,
         ctx: str,
     ) -> SafetyCheckResult:
@@ -344,12 +273,11 @@ class SafetyGuard:
             checked_properties=props,
             latency_ms=(time.perf_counter() - t_start) * 1000,
             layers_used=layers_used,
-            ml_risk_score=ml_risk,
             action=action,
             context=ctx,
         )
 
-    # ── LLM judge (Layer 3) ────────────────────────────────────────────────────
+    # ── LLM judge ─────────────────────────────────────────────────────────────
 
     async def _run_llm_checks(
         self,
@@ -377,21 +305,17 @@ class SafetyGuard:
                 checks.append(self._check_corrigibility(action, context))
 
         violation_lists = await asyncio.gather(*checks)
-        all_violations: list[SafetyViolation] = []
+        violations: list[SafetyViolation] = []
+        seen = set()
         for vlist in violation_lists:
-            all_violations.extend(vlist)
-        return all_violations
+            for v in vlist:
+                if v.property not in seen:
+                    violations.append(v)
+                    seen.add(v.property)
+        return violations
 
     async def _judge(self, prompt: str) -> str:
-        client = self._async_client
-        response = await _retry(
-            lambda: client.chat.completions.create(
-                model=self.judge_model,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.0,
-            )
-        )
-        return response.choices[0].message.content.strip()
+        return await self._adapter.achat(prompt)
 
     def _parse_violation(self, raw: str, prop: str) -> list[SafetyViolation]:
         lines = raw.strip().splitlines()
@@ -419,7 +343,7 @@ class SafetyGuard:
             source="llm",
         )]
 
-    # ── Individual LLM property checks ────────────────────────────────────────
+    # ── Property checks ────────────────────────────────────────────────────────
 
     async def _check_sycophancy(self, action: str, context: str) -> list[SafetyViolation]:
         prompt = f"""You are a safety evaluator for AI agent actions.

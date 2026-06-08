@@ -5,7 +5,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskPr
 from rich.console import Console
 
 from saroku.core.schema import ProbeInstance, ProbeResult, BehavioralProperty
-from saroku.adapters.litellm_adapter import LiteLLMAdapter
+from saroku.adapters.openai_compat import OpenAICompatAdapter
 from saroku.judges.rule_judge import RuleJudge
 from saroku.judges.llm_judge import LLMJudge
 
@@ -15,7 +15,7 @@ console = Console()
 class SarokuRunner:
     def __init__(self, model: str, judge_model: Optional[str] = None, verbose: bool = False):
         self.model = model
-        self.adapter = LiteLLMAdapter(model)
+        self.adapter = OpenAICompatAdapter(model)
         self.rule_judge = RuleJudge()
         self.judge_model = judge_model or "gpt-4o-mini"
         self.llm_judge = LLMJudge(self.judge_model)

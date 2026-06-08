@@ -1,3 +1,12 @@
+"""
+saroku.adapters.openai_compat — OpenAI-SDK adapter for the benchmark runner.
+
+Used by SarokuRunner (benchmark execution) and LLMGenerator (probe generation).
+Not for SafetyGuard — use the ModelAdapter subclasses in factory.py for that.
+"""
+
+from __future__ import annotations
+
 import asyncio
 import os
 import random
@@ -57,7 +66,14 @@ async def _retry(coro_fn):
         await asyncio.sleep(wait)
 
 
-class LiteLLMAdapter:
+class OpenAICompatAdapter:
+    """
+    OpenAI-SDK adapter for the benchmark runner and probe generator.
+
+    Supports OpenAI and Vertex AI (via openai-compatible endpoint).
+    For SafetyGuard's Layer-3 judge, use resolve_adapter() from factory.py instead.
+    """
+
     def __init__(self, model: str):
         self.model = model
         self.is_vertex = model.startswith("vertex_ai/")
@@ -79,8 +95,6 @@ class LiteLLMAdapter:
             return AsyncOpenAI(base_url=_vertex_base_url(), api_key=_get_vertex_access_token())
         return self._async_client
 
-    # ── sync (kept for tests / rule judge) ──────────────────────────────────
-
     def chat(self, messages: list[dict], temperature: float = 0.3) -> str:
         response = self._sync_client().chat.completions.create(
             model=self._api_model,
@@ -101,8 +115,6 @@ class LiteLLMAdapter:
             return [item.embedding for item in response.data]
         except Exception:
             return None
-
-    # ── async ────────────────────────────────────────────────────────────────
 
     async def achat(self, messages: list[dict], temperature: float = 0.3) -> str:
         client = self._async_client_for_request()

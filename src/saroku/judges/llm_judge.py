@@ -1,5 +1,5 @@
 from openai import OpenAI, AsyncOpenAI
-from saroku.adapters.litellm_adapter import _retry
+from saroku.adapters.openai_compat import _retry
 
 
 class LLMJudge:
