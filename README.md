@@ -12,39 +12,41 @@
 
 saroku solves two distinct problems:
 
-**1. Behavioral benchmarking** — does your LLM actually stand behind what it says? saroku runs structured probes across 8 behavioral properties and tells you where it breaks down.
+**1. Behavioral regression testing** — measure model behavior across 8 properties (sycophancy, honesty, consistency, prompt injection, trust hierarchy, minimal footprint, goal drift, corrigibility). Run structured probes and get coverage reports.
 
-**2. Runtime agent safety** — does your agent take actions it shouldn't? saroku's `SafetyGuard` intercepts tool calls before they execute and blocks unsafe ones in under 200ms.
-
----
-
-## Benchmark
-
-![Agent Safety Detection Rate by Category](assets/benchmark.png)
-
-**55-probe benchmark — binary safe/unsafe detection**
-
-| Model | Overall | Prompt Injection | Trust Hierarchy | Goal Drift | Corrigibility | Minimal Footprint | Sycophancy |
-|---|---|---|---|---|---|---|---|
-| **saroku-safety-0.5b** | **98%** | **100%** | **100%** | **100%** | **100%** | **100%** | **100%** |
-| Granite Guardian 2B | 73% | 80% | 70% | 78% | 20% | 40% | 80% |
-| Llama Guard 3 1B | 53% | 70% | 53% | 33% | 20% | 20% | 20% |
-| ShieldGemma 2B | 18% | 0% | 0% | 0% | 0% | 0% | 0% |
-
-**saroku also classifies *which* violation type — 78% 9-class accuracy across all behavioral labels.**
-
-Corrigibility, minimal footprint, and sycophancy are **saroku-exclusive categories** — no other evaluated model has a named concept for them.
+**2. Runtime agent safety** — intercept unsafe tool calls before execution. Compose a safety stack (rules → classifiers → LLMs). Plug in any judge: local models, HuggingFace, API-based LLMs, custom matchers, ensembles.
 
 ---
 
-## The problem
+## The 8 behavioral properties
+
+These are what saroku measures — independently of which classifier you use:
+
+| Property | What it checks |
+|---|---|
+| **Sycophancy** | Does the model abandon correct answers when users push back? |
+| **Honesty** | Does the model acknowledge uncertainty instead of confabulating? |
+| **Consistency** | Do equivalent questions get equivalent answers? |
+| **Prompt Injection** | Does the model follow instructions embedded in external data? |
+| **Trust Hierarchy** | Does the model respect operator rules over user requests? |
+| **Minimal Footprint** | Does the model prefer reversible actions over irreversible ones? |
+| **Goal Drift** | Does the model stay on task or expand scope without permission? |
+| **Corrigibility** | Does the model stop when told to stop? |
+
+---
+
+## Why this matters
+
+Behavioral safety isn't a jailbreak problem — it's a *values* problem.
+
+Sycophancy, goal drift, prompt injection, corrigibility failures don't show up in accuracy benchmarks. They show up when users push back, when prompts change, when you swap providers. And by then, it's in production.
 
 The [MASK Benchmark (2026)](https://arxiv.org/abs/2503.03750) found:
 - No frontier model is honest **more than 46% of the time** under social pressure
 - Larger models are *less* honest, not more
 - **83% of models** self-report knowing they contradicted their own beliefs
 
-These aren't bugs you can find with unit tests. They show up when users push back, when prompts change, when you swap providers. saroku finds them before they reach production.
+saroku measures this. Before it reaches your users.
 
 ---
 
@@ -72,22 +74,9 @@ saroku compare --models gpt-4o-mini,claude-3-5-sonnet-20241022
 saroku calibrate --judge-model gpt-4o-mini
 ```
 
-### What gets measured
+### Benchmarking with saroku
 
-| Property | What saroku checks |
-|---|---|
-| **Sycophancy** | Does the model abandon correct answers when users push back? |
-| **Honesty** | Does the model acknowledge uncertainty instead of confabulating? |
-| **Consistency** | Do equivalent questions get equivalent answers? |
-| **Prompt Injection** | Does the model follow instructions embedded in external data? |
-| **Trust Hierarchy** | Does the model respect operator rules over user requests? |
-| **Minimal Footprint** | Does the model prefer reversible actions over irreversible ones? |
-| **Goal Drift** | Does the model stay on task or expand scope without permission? |
-| **Corrigibility** | Does the model stop when told to stop? |
-
-### bench-v1
-
-A static, version-locked set of 96 hand-authored probes. Unlike generated benchmarks, results are reproducible across runs and comparable across teams.
+saroku includes **bench-v1**, a static set of 96 hand-authored probes grounded in safety research. Use it to evaluate any model:
 
 ```python
 from saroku.benchmarks import load_benchmark
@@ -95,6 +84,8 @@ from saroku.benchmarks import load_benchmark
 bench = load_benchmark("bench-v1")
 # {"version": "bench-v1", "count": 96, "properties": [...]}
 ```
+
+Results are reproducible and comparable across teams — useful as a reference when comparing models or evaluating your own classifiers.
 
 ---
 
