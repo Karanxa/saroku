@@ -98,7 +98,24 @@ bench = load_benchmark("bench-v1")
 
 ---
 
+## Architecture
+
+saroku v0.5+ uses a **pluggable, policy-driven architecture**:
+
+- **Classifiers**: Pluggable safety judges. Plug in LLM-based judges, rule-based matchers, HuggingFace models, or custom classifiers via a simple interface.
+- **Policy DSL**: Declarative YAML policies define which classifiers run at which execution layers, with confidence thresholds and fallback chains.
+- **ExecutionEngine**: Orchestrates classifiers across properties with two strategies:
+  - **Cascade**: Try each layer's classifiers in order; stop at first confident result
+  - **Speculative**: Run concurrent classifiers in a layer; use first confident winner (lower latency)
+- **Observable**: Every classifier invocation is tracked — latency, confidence, outcome — accessible via `guard.metrics`
+
+**Backwards compatible**: The legacy `SafetyGuard(mode=..., judge_model=...)` API still works unchanged.
+
+---
+
 ## Runtime SafetyGuard
+
+### Legacy API (still works)
 
 Add one check before your agent executes any action:
 
@@ -126,7 +143,81 @@ if not result.is_safe:
 result = await guard.acheck(action="...", context="...")
 ```
 
-### Modes
+### Policy-Driven API (new)
+
+Use declarative policies for fine-grained control:
+
+```python
+from saroku import SafetyGuard, Policy
+
+# Load a pre-built policy
+policy = Policy.from_yaml("policies/default.yml")
+guard = SafetyGuard(policy=policy)
+
+# Or define one in code
+from saroku.policy import Policy, PolicyProperty, ExecutionLayer
+
+policy = Policy(
+    version="1.0",
+    policy_id="my-policy",
+    properties=[
+        PolicyProperty(
+            name="sycophancy",
+            classifier="llm:gpt-4o-mini",
+            fallback="rule:capitulation",
+        ),
+    ],
+    execution={
+        "balanced": [
+            ExecutionLayer(
+                name="fast",
+                classifiers=["rule:basic_checks"],
+                timeout_ms=10,
+                strategy="cascade",
+            ),
+            ExecutionLayer(
+                name="thorough",
+                classifiers=["llm:gpt-4o-mini"],
+                timeout_ms=2000,
+                strategy="cascade",
+            ),
+        ]
+    },
+)
+
+guard = SafetyGuard(policy=policy)
+result = await guard.acheck(action="...", context="...", mode="balanced")
+
+# Inspect which classifiers were used
+print(guard.metrics.summary())
+```
+
+### Pluggable Classifiers
+
+saroku ships with built-in classifiers and supports custom ones:
+
+```python
+from saroku.classifiers import ClassifierRegistry, HFModelClassifier
+
+# Use HuggingFace models
+hf_classifier = HFModelClassifier("Qwen/Qwen2.5-0.5B")
+ClassifierRegistry.register("hf:qwen-0.5b", hf_classifier)
+
+# Use the local saroku-safety-0.5b model
+from saroku.classifiers import LocalSarokaClassifier
+local = LocalSarokaClassifier(model_path="./models/saroku-safety-0.5b")
+ClassifierRegistry.register("local:saroku", local)
+
+# Combine classifiers in an ensemble
+from saroku.classifiers import EnsembleClassifier
+ensemble = EnsembleClassifier(
+    classifiers=[local, hf_classifier],
+    strategy="majority",  # or "cascade"
+)
+ClassifierRegistry.register("ensemble:hybrid", ensemble)
+```
+
+### Modes (legacy)
 
 ```python
 # No model required — fast pattern matching only (<5ms)
@@ -154,13 +245,60 @@ guard = SafetyGuard(mode="balanced", judge_model="gpt-4o-mini")
 ✅ ALLOWED  Read service config
 ```
 
+### Framework Integration
+
+saroku integrates with popular agent frameworks — wrap tools or entire agents:
+
+```python
+from saroku import wrap, protect
+
+# Protect a single tool
+safe_search = wrap(agent.search_tool, guard=guard)
+
+# Protect all tools in an agent (auto-detects framework)
+from saroku import SafetyBlockedError
+safe_agent = await protect(agent, guard=guard)
+
+# Handle blocked actions
+try:
+    result = await safe_agent.run(task)
+except SafetyBlockedError as e:
+    print(f"Action blocked: {e.violations}")
+```
+
+Supported frameworks: **Google ADK, AutoGen, LangChain**
+
+### Observability
+
+Every classifier invocation is tracked automatically:
+
+```python
+# After running checks
+metrics = guard.metrics
+
+# Get a summary
+print(metrics.summary())
+# {
+#   "total_invocations": 42,
+#   "by_classifier": {"llm:gpt-4o-mini": 23, "rule:basic": 19},
+#   "avg_latency_ms": 145.2,
+#   "confident_rate": 0.88,
+#   "timeout_rate": 0.02,
+# }
+
+# Get raw invocations for detailed analysis
+for invocation in metrics.to_list():
+    print(f"{invocation.classifier_id}: {invocation.latency_ms}ms, confidence={invocation.confidence}")
+```
+
 ### Performance
 
 | Scenario | Latency |
 |---|---|
 | Clear violation caught by rules | <1ms |
 | Ambiguous action evaluated by local model | ~65ms |
-| Avg across 1000 queries | <50ms |
+| Avg across 1000 queries (cascade) | <50ms |
+| Speculative layer (concurrent) | ~max(fastest, all_uncertain) |
 
 ---
 
