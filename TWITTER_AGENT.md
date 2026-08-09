@@ -1,44 +1,50 @@
 # saroku Twitter Agent
 
-Autonomous agent for growing saroku's Twitter presence through educational content and genuine engagement.
+Autonomous agent for growing saroku's Twitter presence through educational content.
 
 ## Quick Start
+
+### Primary: Spawn the Agent
+
+```bash
+# Run the Twitter agent (generates + posts a thread)
+# Use Claude Code: Agent tool with subagent_type="twitter-content-agent"
+```
+
+Or manually:
+```bash
+# The agent is defined in .claude/agents/twitter-content-agent.md
+# It generates tweets directly and posts via xurl
+```
+
+### Secondary: Manual Python Script
 
 ```bash
 cd /home/karan/saroku
 
-# Generate and post a single thread
+# Generate and post (legacy fallback)
 python twitter_agent.py post
 
-# Run full engagement cycle (post + monitor mentions + hunt engagement)
-python twitter_agent.py full
-
-# Dry-run (see tweets without posting)
+# Dry-run (preview tweets)
 python twitter_agent.py post --dry-run
 
 # Check history
 python twitter_agent.py history
 ```
 
-## How It Works
+## Architecture
 
-**1. Thread Generation** (every post)
-- Rotates through 5 strategies: technical, launch, tips, case_study, research
-- Generates 7-tweet threads using Claude (Haiku)
-- Tracks topics to avoid repetition
-- Posts via xurl (native Twitter API)
+**Agent-First Design**:
+- Agent generates content using Claude Haiku (no API calls)
+- Posts via `xurl` (native X API)
+- Tracks history in `~/.saroku/twitter_posts.json`
+- Stateless execution (all state in JSON files)
 
-**2. Engagement Monitoring** (future)
-- Scans mentions and replies
-- Detects genuine questions about saroku/agent safety
-- Replies with insights (not promotions)
-- Tracks engagement history
-
-**3. Hunt Mode** (future)
-- Searches for relevant AI/safety discussions
-- Adds meaningful value to conversations
-- Never spams or self-promotes
-- Identifies topics worth engaging on
+This means:
+1. Agent can run in Claude Code or scheduled externally
+2. No separate LLM API calls needed
+3. Fast, cheap, reproducible
+4. Easy to audit (just read the history JSON)
 
 ## Configuration
 
