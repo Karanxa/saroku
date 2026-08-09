@@ -15,6 +15,32 @@ from pathlib import Path
 from typing import Optional
 import anthropic
 
+# Model selection: Use Grok if available, fallback to Claude Haiku
+def get_llm_client():
+    """Get LLM client. Prefers Grok, falls back to Claude."""
+    if os.getenv("GROK_API_KEY") or os.getenv("X_API_GROK_TOKEN"):
+        return "grok"  # Placeholder for future Grok API
+    return "claude"
+
+
+def call_llm(prompt: str, max_tokens: int = 2000) -> str:
+    """Call LLM with automatic provider selection."""
+    provider = get_llm_client()
+
+    if provider == "grok":
+        # TODO: Implement Grok API call when available
+        # For now, fall back to Claude
+        pass
+
+    # Default: Claude Haiku via Anthropic API
+    client = anthropic.Anthropic()
+    message = client.messages.create(
+        model="claude-haiku-4-5-20251001",
+        max_tokens=max_tokens,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    return message.content[0].text
+
 # Config
 HISTORY_DIR = Path.home() / ".saroku"
 HISTORY_DIR.mkdir(parents=True, exist_ok=True)
@@ -93,8 +119,7 @@ def save_engagement_history(history: dict):
 def generate_thread(
     strategy: str, num_tweets: int = 7, existing_topics: Optional[list] = None
 ) -> list[str]:
-    """Generate a tweet thread using Claude."""
-    client = anthropic.Anthropic()
+    """Generate a tweet thread using LLM (Grok preferred, fallback to Claude)."""
     existing = "\n".join(f"- {t}" for t in (existing_topics or [])) if existing_topics else "None yet"
 
     prompt = f"""You are a Twitter/X content strategist for saroku, an LLM agent safety platform.
@@ -126,15 +151,11 @@ Return ONLY the tweets, one per line, numbered 1-{num_tweets}. Example:
 
 Start now:"""
 
-    message = client.messages.create(
-        model="claude-haiku-4-5-20251001",
-        max_tokens=2000,
-        messages=[{"role": "user", "content": prompt}],
-    )
+    response = call_llm(prompt, max_tokens=2000)
 
     # Parse response
     tweets = []
-    for line in message.content[0].text.strip().split("\n"):
+    for line in response.strip().split("\n"):
         line = line.strip()
         if line and line[0].isdigit() and "." in line:
             tweet = line.split(".", 1)[1].strip()
@@ -145,13 +166,11 @@ Start now:"""
 
 
 def generate_reply(mention: dict, context: str = "") -> Optional[str]:
-    """Generate a reply to a mention using Claude.
+    """Generate a reply to a mention (using Grok if available, else Claude).
 
     Only reply if it's a genuine question or comment worth engaging with.
     Don't over-explain what saroku is unless they ask.
     """
-    client = anthropic.Anthropic()
-
     prompt = f"""Someone mentioned @saroku on Twitter. Here's their post:
 "{mention.get('text', '')}"
 
@@ -169,26 +188,18 @@ If it's irrelevant spam: Return "[SKIP]"
 
 Generate ONLY the reply text."""
 
-    message = client.messages.create(
-        model="gpt-4o-mini",
-        max_tokens=500,
-        messages=[{"role": "user", "content": prompt}],
-    )
-
-    reply = message.content[0].text.strip()
+    reply = call_llm(prompt, max_tokens=500).strip()
     if reply == "[SKIP]" or not reply or len(reply) > 280:
         return None
     return reply
 
 
 def generate_engagement_reply(query: str, post_text: str) -> Optional[str]:
-    """Generate a reply to engage with relevant discussions.
+    """Generate a reply to engage with relevant discussions (using Grok if available).
 
     CRITICAL: Only reply if you have genuine insight. Never mention saroku unless it's
     naturally relevant. Act like a knowledgeable person, not a bot.
     """
-    client = anthropic.Anthropic()
-
     prompt = f"""You are an AI safety researcher who knows agent safety deeply.
 You're on Twitter and someone posted something relevant to your expertise.
 
@@ -215,13 +226,7 @@ GUIDANCE:
 
 Generate ONLY the reply text. If skipping, return "[SKIP]"."""
 
-    message = client.messages.create(
-        model="gpt-4o-mini",
-        max_tokens=500,
-        messages=[{"role": "user", "content": prompt}],
-    )
-
-    reply = message.content[0].text.strip()
+    reply = call_llm(prompt, max_tokens=500).strip()
     if reply == "[SKIP]" or len(reply) > 280 or not reply:
         return None
     return reply
