@@ -53,10 +53,12 @@ from __future__ import annotations
 import asyncio
 import time
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Optional, Union
 
 from saroku.adapters.base import ModelAdapter
 from saroku.adapters.factory import resolve_adapter
+from saroku.execution.engine import ExecutionEngine
+from saroku.policy.dsl import Policy
 
 ALL_PROPERTIES = [
     "sycophancy",
@@ -149,6 +151,17 @@ class SafetyGuard:
         mode:             "local"    — local 0.5b model only (requires local_model_path)
                           "balanced" — local model first, LLM for unsafe/uncertain
                           "thorough" — always run the full LLM judge
+
+        policy:           Optional saroku.policy.Policy instance, or a path to a
+                          policy YAML file. When given, SafetyGuard routes checks
+                          through saroku.execution.ExecutionEngine against that
+                          policy's classifier cascades instead of the built-in
+                          local-model / LLM-judge path above. judge_model,
+                          local_model_path and model_adapter are ignored in this
+                          mode — the policy's own classifier ids
+                          ("llm:...", "rule:...", "custom:...") are used instead.
+                          `mode` still selects which of the policy's execution
+                          cascades ("balanced", "thorough", ...) runs.
     """
 
     def __init__(
@@ -159,13 +172,26 @@ class SafetyGuard:
         mode: str = MODE_BALANCED,
         local_model_path: Optional[str] = "karanxa/saroku-safety-0.5b",
         model_adapter: Optional[ModelAdapter] = None,
+        policy: Optional[Union[Policy, str]] = None,
     ):
         self.judge_model = judge_model
-        self.default_properties = properties or ALL_PROPERTIES
         self.block_on = block_on
         self.mode = mode
         self._severity_rank = {"low": 0, "medium": 1, "high": 2}
         self._local_judge = None
+        self.policy: Optional[Policy] = None
+        self._engine: Optional[ExecutionEngine] = None
+
+        if policy is not None:
+            self.policy = Policy.from_yaml(policy) if isinstance(policy, str) else policy
+            self._engine = ExecutionEngine(self.policy)
+            self._adapter = None
+            # A policy defines its own properties — the hardcoded legacy
+            # ALL_PROPERTIES list doesn't apply and may not even exist on it.
+            self.default_properties = properties or [p.name for p in self.policy.properties]
+            return
+
+        self.default_properties = properties or ALL_PROPERTIES
 
         if local_model_path:
             from saroku.local_judge import LocalJudge
@@ -180,6 +206,11 @@ class SafetyGuard:
             self._adapter = resolve_adapter(judge_model)
         else:
             self._adapter = None
+
+    @property
+    def metrics(self):
+        """Per-classifier-invocation ExecutionMetrics from the policy path, or None on the legacy path."""
+        return self._engine.metrics if self._engine is not None else None
 
     # ── Public API ─────────────────────────────────────────────────────────────
 
@@ -209,6 +240,11 @@ class SafetyGuard:
         properties: Optional[list[str]] = None,
     ) -> SafetyCheckResult:
         """Async safety check — returns when a verdict is reached."""
+        if self._engine is not None:
+            return await self._acheck_via_engine(
+                action, context, operator_constraints, original_goal, properties
+            )
+
         t_start = time.perf_counter()
         props = properties or self.default_properties
         ctx = context or ""
@@ -235,6 +271,40 @@ class SafetyGuard:
         # ── Thorough path: full LLM judge ─────────────────────────────────────
         layers_used.append("llm")
         violations = await self._run_llm_checks(action, ctx, constraints, original_goal or "", props)
+        return self._build_result(violations, props, t_start, layers_used, action, ctx)
+
+    # ── Policy / ExecutionEngine path ──────────────────────────────────────────
+
+    async def _acheck_via_engine(
+        self,
+        action: str,
+        context: Optional[str],
+        operator_constraints: Optional[list[str]],
+        original_goal: Optional[str],
+        properties: Optional[list[str]],
+    ) -> SafetyCheckResult:
+        t_start = time.perf_counter()
+        props = properties or self.default_properties
+        ctx = context or ""
+
+        engine_kwargs = {}
+        if operator_constraints:
+            engine_kwargs["constraints"] = operator_constraints
+
+        eval_result = await self._engine.evaluate_all_properties(
+            action, ctx, mode=self.mode, properties=props, **engine_kwargs
+        )
+        violations = [
+            SafetyViolation(
+                property=r.property,
+                severity=r.severity,
+                description=r.description,
+                recommendation=r.recommendation,
+                source=r.classifier_id,
+            )
+            for r in eval_result.violations
+        ]
+        layers_used = sorted({r.classifier_id for r in eval_result.results})
         return self._build_result(violations, props, t_start, layers_used, action, ctx)
 
     # ── Local model verdict builder ────────────────────────────────────────────

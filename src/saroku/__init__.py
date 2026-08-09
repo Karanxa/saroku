@@ -29,6 +29,8 @@ Quickstart (framework interceptor):
 """
 
 from saroku.guard import SafetyGuard, SafetyCheckResult, SafetyViolation
+from saroku.policy import Policy
+from saroku.execution import ExecutionEngine
 from saroku.adapters import (
     ModelAdapter,
     OpenAIAdapter,
@@ -43,6 +45,9 @@ __all__ = [
     "SafetyGuard",
     "SafetyCheckResult",
     "SafetyViolation",
+    # Policy-driven execution engine
+    "Policy",
+    "ExecutionEngine",
     # Adapters — for custom model integration
     "ModelAdapter",
     "OpenAIAdapter",
