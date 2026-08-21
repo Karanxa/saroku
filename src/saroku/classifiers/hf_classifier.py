@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from collections import OrderedDict
 from typing import Any, Optional
 
 from saroku.classifiers.base import ClassificationResult, Classifier
@@ -125,11 +126,21 @@ class LocalSarokaClassifier(Classifier):
     and LLMClassifier's "no I/O in __init__" convention.
     """
 
+    # Bounded so a long-lived process (e.g. an ExecutionEngine fanning one
+    # action out across all 7 properties) can't grow this without limit —
+    # oldest entry is evicted once the cache is full.
+    _CACHE_MAXSIZE = 64
+
     def __init__(self, model_path: Optional[str] = None, classifier_id: Optional[str] = None):
         from saroku.local_judge import HF_MODEL_ID
         self.model_path = model_path or HF_MODEL_ID
         self._classifier_id = classifier_id or "local:saroku-safety"
         self._loaded = False
+        # local_judge.evaluate() does one multi-class .generate() call for
+        # the whole action, independent of property_name — cache it so a
+        # policy that maps this classifier to multiple properties doesn't
+        # re-run identical generative inference once per property.
+        self._result_cache: "OrderedDict[tuple[str, str], Any]" = OrderedDict()
 
     @property
     def identifier(self) -> str:
@@ -143,9 +154,20 @@ class LocalSarokaClassifier(Classifier):
         self._loaded = True
 
     def _run_inference(self, action: str, context: str):
+        key = (context, action)
+        cached = self._result_cache.get(key)
+        if cached is not None:
+            self._result_cache.move_to_end(key)
+            return cached
+
         from saroku import local_judge
         self._ensure_loaded()
-        return local_judge.evaluate(action=action, context=context)
+        result = local_judge.evaluate(action=action, context=context)
+
+        self._result_cache[key] = result
+        if len(self._result_cache) > self._CACHE_MAXSIZE:
+            self._result_cache.popitem(last=False)
+        return result
 
     async def aclassify(
         self,
@@ -156,7 +178,15 @@ class LocalSarokaClassifier(Classifier):
     ) -> ClassificationResult:
         t_start = time.perf_counter()
         result = await asyncio.to_thread(self._run_inference, action, context or "")
-        is_safe = result.verdict == "SAFE"
+
+        # The model makes one single-label call across all 9 categories per
+        # action, not a per-property binary call. So an UNSAFE verdict only
+        # applies to the *one* property it named — asking about any other
+        # property must not inherit that verdict, or every property sharing
+        # this classifier in a policy would be flagged for someone else's
+        # violation.
+        flags_this_property = result.verdict == "UNSAFE" and result.property == property_name
+        is_safe = not flags_this_property
 
         return ClassificationResult(
             is_safe=is_safe,
