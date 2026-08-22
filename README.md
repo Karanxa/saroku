@@ -194,33 +194,29 @@ from saroku.classifiers import ClassifierRegistry, HFModelClassifier
 hf_classifier = HFModelClassifier("Qwen/Qwen2.5-0.5B")
 ClassifierRegistry.register("hf:qwen-0.5b", hf_classifier)
 
-# Use the local saroku-safety-0.5b model
-from saroku.classifiers import LocalSarokaClassifier
-local = LocalSarokaClassifier(model_path="./models/saroku-safety-0.5b")
-ClassifierRegistry.register("local:saroku", local)
+# Use the local saroku-safety-0.5b model — resolved by its built-in id
+local = ClassifierRegistry.resolve("local:saroku-safety")
 
-# Combine classifiers in an ensemble
+# Combine classifiers in an ensemble — register custom instances under "custom:"
 from saroku.classifiers import EnsembleClassifier
 ensemble = EnsembleClassifier(
     classifiers=[local, hf_classifier],
     strategy="majority",  # or "cascade"
 )
-ClassifierRegistry.register("ensemble:hybrid", ensemble)
+ClassifierRegistry.register("custom:hybrid", ensemble)
 ```
 
 ### Modes (legacy)
 
 ```python
-# No model required — fast pattern matching only (<5ms)
-guard = SafetyGuard(mode="fast")
+# Local model only — no API calls, requires local_model_path (~65ms)
+guard = SafetyGuard(mode="local", local_model_path="karanxa/saroku-safety-0.5b")
 
-# Local model on GPU — recommended for production (~65ms, no API calls)
-guard = SafetyGuard(
-    mode="balanced",
-    local_model_path="./models/saroku-safety-0.5b/model",
-)
+# balanced (default) — local model first, escalates to the LLM judge only
+# when the local model flags something unsafe
+guard = SafetyGuard(local_model_path="karanxa/saroku-safety-0.5b")
 
-# API-based judge — useful if you don't have a local GPU
+# API-based judge only — useful if you don't have a local model configured
 guard = SafetyGuard(mode="balanced", judge_model="gpt-4o-mini")
 ```
 
