@@ -1,0 +1,262 @@
+{
+  "backend": "template",
+  "ngram_report": {
+    "corrigibility": {
+      "n_examples": 350,
+      "top_ngrams": [
+        [
+          "the agent had",
+          164
+        ],
+        [
+          "the agent had been",
+          164
+        ],
+        [
+          "agent had been handling",
+          164
+        ],
+        [
+          "the agent had been handling",
+          164
+        ],
+        [
+          "agent had been",
+          164
+        ],
+        [
+          "had been handling",
+          164
+        ],
+        [
+          "as part of its",
+          126
+        ],
+        [
+          "as part of",
+          126
+        ],
+        [
+          "as part of its assigned",
+          126
+        ],
+        [
+          "assigned responsibilities in",
+          126
+        ]
+      ],
+      "flagged_over_threshold": [
+        [
+          "the agent had",
+          164,
+          0.4685714285714286
+        ],
+        [
+          "the agent had been",
+          164,
+          0.4685714285714286
+        ],
+        [
+          "agent had been handling",
+          164,
+          0.4685714285714286
+        ],
+        [
+          "the agent had been handling",
+          164,
+          0.4685714285714286
+        ],
+        [
+          "agent had been",
+          164,
+          0.4685714285714286
+        ],
+        [
+          "had been handling",
+          164,
+          0.4685714285714286
+        ],
+        [
+          "as part of its",
+          126,
+          0.36
+        ],
+        [
+          "as part of",
+          126,
+          0.36
+        ],
+        [
+          "as part of its assigned",
+          126,
+          0.36
+        ],
+        [
+          "assigned responsibilities in",
+          126,
+          0.36
+        ],
+        [
+          "the agent has",
+          126,
+          0.36
+        ],
+        [
+          "agent has been executing",
+          126,
+          0.36
+        ],
+        [
+          "the agent has been",
+          126,
+          0.36
+        ],
+        [
+          "part of its assigned responsibilities",
+          126,
+          0.36
+        ],
+        [
+          "of its assigned responsibilities in",
+          126,
+          0.36
+        ]
+      ]
+    },
+    "safe": {
+      "n_examples": 350,
+      "top_ngrams": [
+        [
+          "the agent had",
+          164
+        ],
+        [
+          "the agent had been",
+          164
+        ],
+        [
+          "agent had been handling",
+          164
+        ],
+        [
+          "the agent had been handling",
+          164
+        ],
+        [
+          "agent had been",
+          164
+        ],
+        [
+          "had been handling",
+          164
+        ],
+        [
+          "the agent stops",
+          130
+        ],
+        [
+          "as part of its",
+          126
+        ],
+        [
+          "as part of",
+          126
+        ],
+        [
+          "as part of its assigned",
+          126
+        ]
+      ],
+      "flagged_over_threshold": [
+        [
+          "the agent had",
+          164,
+          0.4685714285714286
+        ],
+        [
+          "the agent had been",
+          164,
+          0.4685714285714286
+        ],
+        [
+          "agent had been handling",
+          164,
+          0.4685714285714286
+        ],
+        [
+          "the agent had been handling",
+          164,
+          0.4685714285714286
+        ],
+        [
+          "agent had been",
+          164,
+          0.4685714285714286
+        ],
+        [
+          "had been handling",
+          164,
+          0.4685714285714286
+        ],
+        [
+          "the agent stops",
+          130,
+          0.37142857142857144
+        ],
+        [
+          "as part of its",
+          126,
+          0.36
+        ],
+        [
+          "as part of",
+          126,
+          0.36
+        ],
+        [
+          "as part of its assigned",
+          126,
+          0.36
+        ],
+        [
+          "assigned responsibilities in",
+          126,
+          0.36
+        ],
+        [
+          "the agent has",
+          126,
+          0.36
+        ],
+        [
+          "agent has been executing",
+          126,
+          0.36
+        ],
+        [
+          "the agent has been",
+          126,
+          0.36
+        ],
+        [
+          "part of its assigned responsibilities",
+          126,
+          0.36
+        ]
+      ]
+    }
+  },
+  "probe_report": {
+    "train_accuracy": 1.0,
+    "heldout_accuracy": 1.0,
+    "n_train": 700,
+    "n_heldout": 100,
+    "flag": true
+  },
+  "overlap_report": {
+    "max_jaccard_overlap": 0.0,
+    "worst_example": null,
+    "bench_v1_instances_checked": 47,
+    "clean": true
+  }
+}
