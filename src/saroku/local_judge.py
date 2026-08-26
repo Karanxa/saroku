@@ -142,7 +142,13 @@ def evaluate(
         )
 
     generated_ids = outputs[0][inputs["input_ids"].shape[1]:]
-    raw_output = _tokenizer.decode(generated_ids, skip_special_tokens=False).strip()
+    # skip_special_tokens=True strips the trailing <|im_end|> EOS marker (a real
+    # registered special token) without touching label tokens like <|goal_drift|>,
+    # which are plain text, not special tokens — see local_judge tokenizer_config.json.
+    # Decoding with False previously left "<|im_end|>" glued onto every output, which
+    # _parse_output's bracket-strip regex fused into the label (e.g. "goal_driftim_end"),
+    # so no unsafe label could ever match and every verdict silently fell through to SAFE.
+    raw_output = _tokenizer.decode(generated_ids, skip_special_tokens=True).strip()
     verdict, property_ = _parse_output(raw_output)
 
     return JudgeResult(
