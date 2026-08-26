@@ -26,6 +26,8 @@ Examples
 
 from __future__ import annotations
 
+import os
+
 from saroku.adapters.base import ModelAdapter
 
 
@@ -41,6 +43,45 @@ _COMPAT_PROVIDERS: dict[str, tuple[str, str]] = {
     ),
     "ollama":     ("http://localhost:11434/v1",                      None),
 }
+
+# Auto-detection priority order + the env var + default model used for each
+# provider when SafetyGuard's judge_model is left unspecified. Order matches
+# this module's own docstring listing above. Ollama is excluded (no API key
+# to detect — silently trying an unstarted local server would fail
+# confusingly) and Azure is excluded (its "model" is actually a user-specific
+# deployment name, not a real model id — there's no sensible default to guess).
+#
+# Model picks: openai/anthropic/google/groq entries match the exact strings
+# already used elsewhere in this module's docstring/examples for consistency.
+# mistral/together/perplexity are lower-certainty picks (reasonable
+# small/current models as of when this was written) and may need updating as
+# those providers deprecate/rename models.
+_AUTO_DETECT_ORDER: list[tuple[str, str, str]] = [
+    # (provider, env_var, default_model)
+    ("openai",     "OPENAI_API_KEY",     "gpt-4o-mini"),
+    ("anthropic",  "ANTHROPIC_API_KEY",  "claude-3-5-haiku-20241022"),
+    ("google",     "GOOGLE_API_KEY",     "gemini-2.0-flash"),
+    ("groq",       "GROQ_API_KEY",       "llama-3.3-70b-versatile"),
+    ("mistral",    "MISTRAL_API_KEY",    "mistral-small-latest"),
+    ("together",   "TOGETHER_API_KEY",   "meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo"),
+    ("perplexity", "PERPLEXITY_API_KEY", "sonar"),
+]
+
+
+def detect_available_provider() -> "str | None":
+    """
+    Check environment variables in priority order and return a
+    "provider:default_model" string for the first provider whose API key is
+    actually set, or None if none are set.
+
+    Used by SafetyGuard to pick a judge_model automatically when the caller
+    doesn't specify one, so saroku plugs into whatever provider the user
+    already has configured instead of silently assuming OpenAI.
+    """
+    for provider, env_var, default_model in _AUTO_DETECT_ORDER:
+        if os.environ.get(env_var):
+            return f"{provider}:{default_model}"
+    return None
 
 
 def resolve_adapter(model_str: str) -> ModelAdapter:

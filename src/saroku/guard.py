@@ -14,7 +14,13 @@ Modes:
 Usage:
     from saroku import SafetyGuard
 
-    # Default: GPT-4o-mini as the LLM judge
+    # Default: auto-detects whichever provider's API key is set in the
+    # environment (OPENAI_API_KEY, ANTHROPIC_API_KEY, GOOGLE_API_KEY,
+    # GROQ_API_KEY, MISTRAL_API_KEY, TOGETHER_API_KEY, PERPLEXITY_API_KEY,
+    # checked in that order) — no hardcoded default provider.
+    guard = SafetyGuard()
+
+    # Or specify the provider/model explicitly
     guard = SafetyGuard(judge_model="gpt-4o-mini")
 
     # Use Anthropic, Gemini, Groq, Ollama, or any provider
@@ -56,7 +62,7 @@ from dataclasses import dataclass, field
 from typing import Optional, Union
 
 from saroku.adapters.base import ModelAdapter
-from saroku.adapters.factory import resolve_adapter
+from saroku.adapters.factory import detect_available_provider, resolve_adapter
 from saroku.execution.engine import ExecutionEngine
 from saroku.policy.dsl import Policy
 
@@ -123,7 +129,13 @@ class SafetyGuard:
 
     Args:
         judge_model:      Model for the LLM judge. Accepts any provider via
-                          "provider:model" prefix. Default: "gpt-4o-mini".
+                          "provider:model" prefix. Default: None — auto-detects
+                          whichever provider's API key is set in the environment
+                          (checked in the order below) and picks a small/cheap
+                          default model for it. Raises ValueError if none of
+                          these env vars are set and no model_adapter or
+                          local_model_path is given either — saroku never
+                          silently assumes a provider you haven't configured.
 
                           Supported prefixes:
                             openai:<model>       OpenAI API         (OPENAI_API_KEY)
@@ -140,8 +152,16 @@ class SafetyGuard:
         model_adapter:    Plug in any custom model as a ModelAdapter instance.
                           Takes precedence over judge_model.
 
-        local_model_path: Path to saroku-safety-0.5b model directory.
-                          Enables the fast local path (~50-150ms, no API costs).
+        local_model_path: Opt-in only — not used unless you pass this explicitly.
+                          Path (or "karanxa/saroku-safety-0.5b" to fetch from HF)
+                          to the local model directory. Enables the fast local
+                          path (~50-150ms, no API costs), but as of the current
+                          model version this is meaningfully weaker than an LLM
+                          judge on adversarial input (measured ~31% detection on
+                          a held-out adversarial probe set, uneven across
+                          properties). Prefer judge_model/model_adapter unless
+                          you specifically need offline/zero-cost inference and
+                          have validated it against your own threat model.
 
         properties:       Properties to evaluate. None = all 7 properties.
 
@@ -166,11 +186,11 @@ class SafetyGuard:
 
     def __init__(
         self,
-        judge_model: str = "gpt-4o-mini",
+        judge_model: Optional[str] = None,
         properties: Optional[list[str]] = None,
         block_on: str = "high",
         mode: str = MODE_BALANCED,
-        local_model_path: Optional[str] = "karanxa/saroku-safety-0.5b",
+        local_model_path: Optional[str] = None,
         model_adapter: Optional[ModelAdapter] = None,
         policy: Optional[Union[Policy, str]] = None,
     ):
@@ -203,7 +223,25 @@ class SafetyGuard:
         if model_adapter is not None:
             self._adapter: Optional[ModelAdapter] = model_adapter
         elif mode != MODE_LOCAL:
-            self._adapter = resolve_adapter(judge_model)
+            resolved_model = judge_model
+            if resolved_model is None:
+                resolved_model = detect_available_provider()
+                if resolved_model is not None:
+                    print(
+                        f"[saroku] No judge_model specified — auto-detected "
+                        f"'{resolved_model}' from an API key in the environment."
+                    )
+                elif self._local_judge is None:
+                    raise ValueError(
+                        "No judge_model specified and no LLM provider could be "
+                        "auto-detected — none of OPENAI_API_KEY, ANTHROPIC_API_KEY, "
+                        "GOOGLE_API_KEY, GROQ_API_KEY, MISTRAL_API_KEY, "
+                        "TOGETHER_API_KEY, or PERPLEXITY_API_KEY are set in the "
+                        "environment. Set one of those, or pass judge_model=, "
+                        "model_adapter=, or local_model_path= explicitly."
+                    )
+            self.judge_model = resolved_model
+            self._adapter = resolve_adapter(resolved_model) if resolved_model is not None else None
         else:
             self._adapter = None
 

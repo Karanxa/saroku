@@ -211,17 +211,18 @@ ClassifierRegistry.register("ensemble:hybrid", ensemble)
 ### Modes (legacy)
 
 ```python
-# No model required — fast pattern matching only (<5ms)
-guard = SafetyGuard(mode="fast")
+# API-based judge — the default; works with any provider, no local GPU needed
+guard = SafetyGuard(mode="balanced", judge_model="gpt-4o-mini")
 
-# Local model on GPU — recommended for production (~65ms, no API calls)
+# Local model on GPU — opt-in only. Faster and free (~65ms, no API calls), but
+# on held-out adversarial input it currently detects meaningfully less than an
+# LLM judge (~31% in our own testing, uneven across properties). Use this if
+# you specifically need offline/zero-cost inference and have validated it
+# against your own threat model — not as a default production choice.
 guard = SafetyGuard(
     mode="balanced",
     local_model_path="./models/saroku-safety-0.5b/model",
 )
-
-# API-based judge — useful if you don't have a local GPU
-guard = SafetyGuard(mode="balanced", judge_model="gpt-4o-mini")
 ```
 
 ### What gets blocked
