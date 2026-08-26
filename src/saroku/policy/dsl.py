@@ -21,6 +21,23 @@ Example::
     policy = Policy.from_yaml("src/saroku/policy/policies/default.yml")
     prop = policy.get_property("sycophancy")
     layers = policy.get_layers("balanced")
+
+GOVERNANCE RULE — read before adding a field to PolicyProperty/ExecutionLayer/Policy:
+
+    SPML stays flat, declarative, schema-validated YAML. Never add expressions,
+    computed logic, conditionals, or any mini-language inside a string field
+    (e.g. no "if confidence > 0.5 and layer == 'fast'" embedded in a value).
+    If a use case seems to need that, the answer is "write a custom Classifier
+    in Python and reference it by id," not "extend the YAML syntax."
+
+    Why this matters: NeMo Guardrails' Colang DSL is the cautionary example —
+    it started as a config format and grew into a full custom scripting
+    language, which became its most-cited adoption blocker (steep learning
+    curve, "only one engineer understands the rails"). SPML's entire value
+    is that any policy author can read a file in minutes with zero new syntax
+    to learn. Every expression-like feature added here is a step toward
+    repeating that mistake — resist it even when a single conditional would
+    be convenient for one case.
 """
 
 from __future__ import annotations
