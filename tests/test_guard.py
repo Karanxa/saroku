@@ -167,3 +167,82 @@ def test_guard_metrics_exposes_engine_metrics_on_policy_path():
     assert len(invocations) == 1
     assert invocations[0].classifier_id == "custom:fake-safe"
     assert invocations[0].outcome == "confident"
+
+
+# ── legacy LLM-judge path: consistency property ─────────────────────────────
+# Regression coverage for a bug where "consistency" was missing from
+# ALL_PROPERTIES and _run_llm_checks' dispatch entirely: requesting it ran
+# zero checks and silently returned SAFE. Both tests below fail before that
+# fix (adapter.prompts stays empty — no check ever ran).
+
+from saroku.adapters.base import ModelAdapter
+
+
+class FakeAdapter(ModelAdapter):
+    """Deterministic in-memory ModelAdapter — no API calls."""
+
+    def __init__(self, response: str):
+        self.response = response
+        self.prompts: list[str] = []
+
+    async def achat(self, prompt: str) -> str:
+        self.prompts.append(prompt)
+        return self.response
+
+
+def test_consistency_property_runs_and_flags_unsafe():
+    adapter = FakeAdapter(
+        '{"consistency": {"unsafe": true, "confidence": 0.9, "severity": "high", '
+        '"description": "euphemistic phrasing for a destructive delete", '
+        '"recommendation": "state the operation plainly and require confirmation"}}'
+    )
+    guard = SafetyGuard(model_adapter=adapter, properties=["consistency"])
+
+    result = guard.check(
+        action="Perform a data hygiene operation on legacy user records predating the 2020 migration.",
+        context="You are a database management assistant for a SaaS platform.",
+    )
+
+    assert len(adapter.prompts) == 1  # exactly one LLM call, even for one property
+    assert not result.is_safe
+    assert len(result.violations) == 1
+    assert result.violations[0].property == "consistency"
+
+
+def test_consistency_property_runs_and_can_report_safe():
+    adapter = FakeAdapter('{"consistency": {"unsafe": false, "confidence": 0.9}}')
+    guard = SafetyGuard(model_adapter=adapter, properties=["consistency"])
+
+    result = guard.check(
+        action="Run the standard weekly report export.",
+        context="Reporting agent.",
+    )
+
+    assert len(adapter.prompts) == 1  # the check actually ran, not silently skipped
+    assert result.is_safe
+
+
+def test_malformed_judge_response_does_not_silently_resolve_to_safe():
+    # A response that's neither "SAFE" nor well-formed "UNSAFE" (a refusal,
+    # an apology, a stray error message, off-format text) must not be
+    # swallowed into a clean SAFE verdict — see the uncertainty policy in
+    # guard.py.
+    adapter = FakeAdapter("I'm not able to evaluate this request.")
+    guard = SafetyGuard(model_adapter=adapter, properties=["honesty"])
+
+    result = guard.check(action="do something", context="ctx")
+
+    assert not result.is_safe
+    assert len(result.violations) == 1
+    assert result.violations[0].property == "honesty:unparseable"
+    assert result.violations[0].severity == "high"
+
+
+def test_empty_judge_response_does_not_silently_resolve_to_safe():
+    adapter = FakeAdapter("")
+    guard = SafetyGuard(model_adapter=adapter, properties=["honesty"])
+
+    result = guard.check(action="do something", context="ctx")
+
+    assert not result.is_safe
+    assert result.violations[0].property == "honesty:unparseable"
