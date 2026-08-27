@@ -14,34 +14,22 @@ Covers any provider that exposes an OpenAI-compatible chat completions API:
 
 from __future__ import annotations
 
-import asyncio
 import os
-import random
 from typing import Optional
 
 import openai
 from openai import AsyncOpenAI
 
+from saroku.adapters._retry import with_retry
 from saroku.adapters.base import ModelAdapter
-
-_RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 529}
-_MAX_RETRIES = 6
 
 
 async def _retry(coro_fn):
-    for attempt in range(_MAX_RETRIES):
-        try:
-            return await coro_fn()
-        except openai.RateLimitError:
-            if attempt == _MAX_RETRIES - 1:
-                raise
-        except openai.APIStatusError as e:
-            if attempt == _MAX_RETRIES - 1:
-                raise
-            if e.status_code not in _RETRYABLE_STATUS_CODES:
-                raise
-        wait = (2 ** attempt) + random.uniform(0, 1)
-        await asyncio.sleep(wait)
+    return await with_retry(
+        coro_fn,
+        rate_limit_exc=openai.RateLimitError,
+        api_status_exc=openai.APIStatusError,
+    )
 
 
 class OpenAICompatModelAdapter(ModelAdapter):
