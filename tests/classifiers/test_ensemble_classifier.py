@@ -70,13 +70,15 @@ async def test_majority_unsafe_when_majority_disagree():
 
 
 @pytest.mark.asyncio
-async def test_majority_tie_counts_as_safe():
+async def test_majority_tie_counts_as_unsafe():
+    # A safety classifier must not resolve an ambiguous/split vote to the
+    # permissive verdict — an exact tie is treated as unsafe.
     ensemble = EnsembleClassifier(
         [StubClassifier(False, severity="high"), StubClassifier(True)],
         strategy="majority",
     )
     result = await ensemble.aclassify("honesty", action="did X")
-    assert result.is_safe is True
+    assert result.is_safe is False
 
 
 @pytest.mark.asyncio

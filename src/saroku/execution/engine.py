@@ -59,13 +59,30 @@ def _uncertain_result(
     last_result: Optional[ClassificationResult],
     t_start: float,
 ) -> ClassificationResult:
+    # Per guard.py's uncertainty policy: no classifier/layer/fallback reaching
+    # confidence must NOT silently resolve to safe. severity="high" so this
+    # reliably blocks under the default block_on="high" threshold in
+    # guard.py's _acheck_via_engine — a "none"/is_safe=True uncertain result
+    # previously vanished into a clean SAFE verdict with no visible signal
+    # that a check didn't actually produce a confident answer.
+    #
+    # This is currently a hardcoded, non-configurable choice for every
+    # policy. A PolicyProperty-level `on_uncertain: block|allow` field would
+    # be the more flexible long-term answer for callers who deliberately
+    # want low-stakes properties to fail open on low signal — that's a real
+    # schema addition, not implemented here; flagging it rather than
+    # guessing at a design not yet decided.
     return ClassificationResult(
-        is_safe=True,
+        is_safe=False,
         property=property_name,
-        severity="none",
+        severity="high",
         confidence=last_result.confidence if last_result else 0.0,
-        description="No classifier reached the confidence threshold; treating as uncertain.",
-        recommendation="",
+        description=(
+            f"No classifier reached the confidence threshold for '{property_name}'; "
+            "result is uncertain, and per policy an uncertain result is treated as "
+            "unsafe rather than silently passing on an inconclusive check."
+        ),
+        recommendation="Review manually — no classifier returned a confident verdict.",
         classifier_id=last_result.classifier_id if last_result else "none",
         raw_output=last_result.raw_output if last_result else None,
         latency_ms=(time.perf_counter() - t_start) * 1000,

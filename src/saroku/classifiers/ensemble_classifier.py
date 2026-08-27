@@ -7,9 +7,11 @@ before constructing one, the same way a caller resolves an adapter
 before building an LLMClassifier). Two strategies:
 
     "majority"  Run all sub-classifiers concurrently (asyncio.gather).
-                Unsafe wins if a strict majority of sub-classifiers say
-                unsafe; confidence is the mean confidence of the
-                classifiers that agree with the winning verdict.
+                Unsafe wins on a strict majority OR an exact tie — this is a
+                safety product, so ambiguous/split votes resolve to the
+                cautious verdict, never silently to safe. Confidence is the
+                mean confidence of the classifiers that agree with the
+                winning verdict.
     "cascade"   Try each sub-classifier in order, sequentially,
                 returning the first result whose confidence exceeds
                 `cascade_threshold`. Falls back to the last result if
@@ -79,7 +81,10 @@ class EnsembleClassifier(Classifier):
         )
         unsafe_votes = [r for r in results if not r.is_safe]
         safe_votes = [r for r in results if r.is_safe]
-        is_safe = len(unsafe_votes) <= len(results) / 2
+        # Strict-minority-only: unsafe must be a strict MINORITY for safe to
+        # win. An exact tie (e.g. 2-2) is deliberately UNSAFE — a safety
+        # classifier must never resolve ambiguity to the permissive verdict.
+        is_safe = len(unsafe_votes) < len(results) / 2
 
         agreeing = unsafe_votes if not is_safe else safe_votes
         confidence = sum(r.confidence for r in agreeing) / len(agreeing) if agreeing else 0.0
