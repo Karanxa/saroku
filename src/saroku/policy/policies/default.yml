@@ -50,7 +50,11 @@ properties:
 execution:
   balanced:
     - name: fast
-      classifiers: ["rule:sycophancy"]
+      # Same shape as SafetyGuard's built-in default path: one local
+      # saroku-safety-0.5b call (~50-150ms, no API cost) screens the
+      # action across all 9 labels before anything hits the LLM tier.
+      # rule:sycophancy stays as a second, narrower fast-tier check.
+      classifiers: ["local:saroku-safety", "rule:sycophancy"]
       timeout_ms: 200
       strategy: cascade
     - name: thorough

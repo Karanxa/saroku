@@ -194,34 +194,41 @@ from saroku.classifiers import ClassifierRegistry, HFModelClassifier
 hf_classifier = HFModelClassifier("Qwen/Qwen2.5-0.5B")
 ClassifierRegistry.register("hf:qwen-0.5b", hf_classifier)
 
-# Use the local saroku-safety-0.5b model
-from saroku.classifiers import LocalSarokaClassifier
-local = LocalSarokaClassifier(model_path="./models/saroku-safety-0.5b")
-ClassifierRegistry.register("local:saroku", local)
+# Use the local saroku-safety-0.5b model — resolved by its built-in id
+local = ClassifierRegistry.resolve("local:saroku-safety")
 
-# Combine classifiers in an ensemble
+# Combine classifiers in an ensemble — register custom instances under "custom:"
 from saroku.classifiers import EnsembleClassifier
 ensemble = EnsembleClassifier(
     classifiers=[local, hf_classifier],
     strategy="majority",  # or "cascade"
 )
-ClassifierRegistry.register("ensemble:hybrid", ensemble)
+ClassifierRegistry.register("custom:hybrid", ensemble)
 ```
 
 ### Modes (legacy)
 
 ```python
-# API-based judge — the default; works with any provider, no local GPU needed
+# API-based judge — the default; works with any provider, no local GPU needed.
+# With no arguments, SafetyGuard() auto-detects whichever provider's API key
+# is set in your environment.
 guard = SafetyGuard(mode="balanced", judge_model="gpt-4o-mini")
 
-# Local model on GPU — opt-in only. Faster and free (~65ms, no API calls), but
-# on held-out adversarial input it currently detects meaningfully less than an
-# LLM judge (~31% in our own testing, uneven across properties). Use this if
-# you specifically need offline/zero-cost inference and have validated it
-# against your own threat model — not as a default production choice.
+# Local model — opt-in only, not a default. Faster and free (~65ms, no API
+# calls), but on held-out adversarial input it currently detects meaningfully
+# less than an LLM judge (~31% in our own testing, uneven across properties).
+# Use this if you specifically need offline/zero-cost inference and have
+# validated it against your own threat model — not as a default production
+# choice.
+guard = SafetyGuard(mode="local", local_model_path="karanxa/saroku-safety-0.5b")
+
+# balanced with the local model as the fast path — escalates to the LLM judge
+# only when the local model flags something unsafe. Still opt-in: you must
+# pass local_model_path explicitly.
 guard = SafetyGuard(
     mode="balanced",
-    local_model_path="./models/saroku-safety-0.5b/model",
+    local_model_path="karanxa/saroku-safety-0.5b",
+    judge_model="gpt-4o-mini",
 )
 ```
 

@@ -145,3 +145,49 @@ async def test_local_saroka_classifier_unsafe(monkeypatch):
     assert result.severity == "high"
     assert "goal_drift" in result.description
     assert load_calls["count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_local_saroka_classifier_does_not_flag_other_properties(monkeypatch):
+    """The model makes one single-label call per action, not one binary call
+    per property. Asking about a property other than the one it flagged
+    must come back safe for that property — otherwise every property a
+    policy maps to this classifier would inherit someone else's violation.
+    """
+    from saroku import local_judge
+
+    fake_result = types.SimpleNamespace(verdict="UNSAFE", raw_output="<|sycophancy|>", property="sycophancy")
+    monkeypatch.setattr(local_judge, "load_model", lambda model_path: None)
+    monkeypatch.setattr(local_judge, "evaluate", lambda action, context="": fake_result)
+
+    classifier = LocalSarokaClassifier()
+    result = await classifier.aclassify("honesty", action="folded under pushback")
+
+    assert result.is_safe is True
+    assert result.severity == "none"
+
+
+@pytest.mark.asyncio
+async def test_local_saroka_classifier_caches_inference_per_action(monkeypatch):
+    """Fanning the same action out across multiple properties (as
+    ExecutionEngine does) must not re-run generative inference once per
+    property — only the model load count was previously guarded, not this.
+    """
+    from saroku import local_judge
+
+    eval_calls = {"count": 0}
+    fake_result = types.SimpleNamespace(verdict="SAFE", raw_output="safe", property=None)
+
+    def fake_evaluate(action, context=""):
+        eval_calls["count"] += 1
+        return fake_result
+
+    monkeypatch.setattr(local_judge, "load_model", lambda model_path: None)
+    monkeypatch.setattr(local_judge, "evaluate", fake_evaluate)
+
+    classifier = LocalSarokaClassifier()
+    await classifier.aclassify("honesty", action="same action", context="same context")
+    await classifier.aclassify("goal_drift", action="same action", context="same context")
+    await classifier.aclassify("sycophancy", action="same action", context="same context")
+
+    assert eval_calls["count"] == 1
